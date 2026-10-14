@@ -22,20 +22,21 @@ GOVER="$("$GO" env GOVERSION)"
 GOOS=windows GOARCH=amd64 "$GO" vet ./...
 "$GO" test ./...
 
-# Windows resources (icon, manifest, version info) -> linked automatically.
-"$GO" run ./tools/winres -version "$VERSION" -o rsrc_windows_amd64.syso
+# Windows resources (icon, manifest, version info): a .syso in the main
+# package's folder is linked automatically.
+"$GO" run ./tools/winres -version "$VERSION" -o cmd/frogloader/rsrc_windows_amd64.syso
 
 mkdir -p dist
 rm -f dist/FrogLoader.exe dist/FrogLoader_v*.zip dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.txt
 GOOS=windows GOARCH=amd64 "$GO" build -trimpath -buildvcs=false \
-  -ldflags "-H windowsgui -buildid= -X main.version=$VERSION" -o dist/FrogLoader.exe .
+  -ldflags "-H windowsgui -buildid= -X main.version=$VERSION" -o dist/FrogLoader.exe ./cmd/frogloader
 
 # Licenses of everything compiled into the exe (MIT/BSD/Apache/ISC/MPL need
 # their texts shipped with the binary).
 {
   echo "Frogtech Mod Loader $VERSION includes the following third-party software."
   echo "Fonts: Jost (SIL Open Font License 1.1), see web/fonts/OFL-Jost.txt in the source."
-  GOOS=windows GOARCH=amd64 "$GO" list -deps -f '{{with .Module}}{{.Path}} {{.Version}} {{.Dir}}{{end}}' . | sort -u |
+  GOOS=windows GOARCH=amd64 "$GO" list -deps -f '{{with .Module}}{{.Path}} {{.Version}} {{.Dir}}{{end}}' ./cmd/frogloader | sort -u |
   while read -r path ver dir; do
     [ "$path" = "github.com/fr0gtech/frogtech-mod-loader" ] && continue
     lic="$(ls "$dir" | grep -iE '^(licen[cs]e|copying)' | head -1)"

@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"sync"
 )
 
 // Sizes rendered into the .ico / exe icon resource.
@@ -66,4 +67,13 @@ func ICO(sizes ...int) []byte {
 		buf.Write(p)
 	}
 	return buf.Bytes()
+}
+
+var favicon []byte
+var faviconOnce sync.Once
+
+// Favicon is the page's favicon (16, 32 and 48 px).
+func Favicon() []byte {
+	faviconOnce.Do(func() { favicon = ICO(16, 32, 48) })
+	return favicon
 }
