@@ -39,6 +39,9 @@ jobs:
       - name: Vet, test and build
         run: GO=go ./build.sh "${{ steps.v.outputs.version }}"
 
+      - name: Third-party notices are up to date
+        run: cmp dist/THIRD_PARTY_NOTICES.txt THIRD_PARTY_NOTICES.txt || { echo "::error::copy dist/THIRD_PARTY_NOTICES.txt to the repository root"; exit 1; }
+
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |

@@ -34,8 +34,8 @@ GOOS=windows GOARCH=amd64 "$GO" build -trimpath -buildvcs=false \
 # Licenses of everything compiled into the exe (MIT/BSD/Apache/ISC/MPL need
 # their texts shipped with the binary).
 {
-  echo "Frogtech Mod Loader $VERSION includes the following third-party software."
-  echo "Fonts: Jost (SIL Open Font License 1.1), see web/fonts/OFL-Jost.txt in the source."
+  echo "Frogtech Mod Loader includes the following third-party software."
+  echo "Font: Jost (SIL Open Font License 1.1), see internal/server/web/fonts/OFL-Jost.txt in the source."
   GOOS=windows GOARCH=amd64 "$GO" list -deps -f '{{with .Module}}{{.Path}} {{.Version}} {{.Dir}}{{end}}' ./cmd/frogloader | sort -u |
   while read -r path ver dir; do
     [ "$path" = "github.com/fr0gtech/frogtech-mod-loader" ] && continue
@@ -49,6 +49,8 @@ GOOS=windows GOARCH=amd64 "$GO" build -trimpath -buildvcs=false \
 # written by tools/pack (fixed timestamps, Go's deflate: reproducible).
 ZIP="dist/FrogLoader_v$VERSION.zip"
 "$GO" run ./tools/pack -o "$ZIP" dist/FrogLoader.exe dist/THIRD_PARTY_NOTICES.txt
+
+cmp -s dist/THIRD_PARTY_NOTICES.txt THIRD_PARTY_NOTICES.txt || echo "warning: THIRD_PARTY_NOTICES.txt is out of date; copy it from dist/" >&2
 
 (cd dist && sha256sum FrogLoader.exe "FrogLoader_v$VERSION.zip" THIRD_PARTY_NOTICES.txt > SHA256SUMS)
 ls -l dist
