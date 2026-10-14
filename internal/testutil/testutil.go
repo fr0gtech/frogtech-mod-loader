@@ -5,10 +5,12 @@ package testutil
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -66,4 +68,63 @@ func FakeLibrary(t testing.TB) (lib, game string) {
 	os.WriteFile(filepath.Join(cit, "steam.inf"), []byte(Read(t, "steam.inf")), 0o644)
 	os.WriteFile(filepath.Join(cit, "gameinfo.gi"), []byte(Read(t, "gameinfo_vanilla.gi")), 0o644)
 	return lib, game
+}
+
+// BuildVPK returns a single-file VPK v2 (directory tree with the data inline
+// as preload bytes) holding files, e.g. {"panorama/layout/x.xml": ...}.
+func BuildVPK(files map[string][]byte) []byte {
+	type entry struct {
+		dir, name string
+		data      []byte
+	}
+	byExt := map[string][]entry{}
+	for p, data := range files {
+		dir, file := filepath.Split(p)
+		dir = strings.TrimSuffix(dir, "/")
+		if dir == "" {
+			dir = " "
+		}
+		ext := filepath.Ext(file)
+		byExt[strings.TrimPrefix(ext, ".")] = append(byExt[strings.TrimPrefix(ext, ".")], entry{dir, strings.TrimSuffix(file, ext), data})
+	}
+	var tree bytes.Buffer
+	cstr := func(s string) { tree.WriteString(s); tree.WriteByte(0) }
+	exts := make([]string, 0, len(byExt))
+	for e := range byExt {
+		exts = append(exts, e)
+	}
+	sort.Strings(exts)
+	for _, ext := range exts {
+		cstr(ext)
+		byDir := map[string][]entry{}
+		var dirs []string
+		for _, e := range byExt[ext] {
+			if byDir[e.dir] == nil {
+				dirs = append(dirs, e.dir)
+			}
+			byDir[e.dir] = append(byDir[e.dir], e)
+		}
+		sort.Strings(dirs)
+		for _, d := range dirs {
+			cstr(d)
+			for _, e := range byDir[d] {
+				cstr(e.name)
+				binary.Write(&tree, binary.LittleEndian, struct {
+					CRC          uint32
+					PreloadBytes uint16
+					ArchiveIndex uint16
+					Offset, Len  uint32
+					Terminator   uint16
+				}{0, uint16(len(e.data)), 0x7fff, 0, 0, 0xffff})
+				tree.Write(e.data)
+			}
+			cstr("")
+		}
+		cstr("")
+	}
+	cstr("")
+	var out bytes.Buffer
+	binary.Write(&out, binary.LittleEndian, [7]uint32{0x55aa1234, 2, uint32(tree.Len()), 0, 0, 0, 0})
+	out.Write(tree.Bytes())
+	return out.Bytes()
 }

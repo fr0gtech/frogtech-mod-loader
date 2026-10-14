@@ -45,31 +45,33 @@ type catalogView struct {
 }
 
 type statusView struct {
-	Version      string         `json:"version"`
-	Game         steam.GameInfo `json:"game"`
-	GameFound    bool           `json:"gameFound"`
-	GameRunning  bool           `json:"gameRunning"`
-	GameinfoOK   bool           `json:"gameinfoOk"`
-	GameinfoErr  string         `json:"gameinfoErr,omitempty"`
-	AddonsDir    string         `json:"addonsDir,omitempty"`
-	DMM          bool           `json:"dmm"`
-	DMMLeftover  bool           `json:"dmmLeftover"`
-	UnknownPaks  []string       `json:"unknownPaks"`
-	PendingApply bool           `json:"pendingApply"`
-	AppliedOnce  bool           `json:"appliedOnce"`
-	Settings     mods.Settings  `json:"settings"`
-	RunKey       bool           `json:"runKey"`
-	Mods         []modView      `json:"mods"`
-	Catalog      []catalogView  `json:"catalog"`
-	Repos        []repoView     `json:"repos"` // Frogtech first, then the user's repositories
-	CatalogErr   string         `json:"catalogErr,omitempty"`
-	LoaderUpdate string         `json:"loaderUpdate,omitempty"`
-	LoaderNotes  []string       `json:"loaderNotes,omitempty"`
-	LastCheck    time.Time      `json:"lastCheck"`
-	LastErr      string         `json:"lastErr,omitempty"`
-	Busy         string         `json:"busy,omitempty"`
-	DataDir      string         `json:"dataDir"`
-	Log          []string       `json:"log"`
+	Version     string         `json:"version"`
+	Game        steam.GameInfo `json:"game"`
+	GameFound   bool           `json:"gameFound"`
+	GameRunning bool           `json:"gameRunning"`
+	GameinfoOK  bool           `json:"gameinfoOk"`
+	GameinfoErr string         `json:"gameinfoErr,omitempty"`
+	AddonsDir   string         `json:"addonsDir,omitempty"`
+	DMM         bool           `json:"dmm"`
+	DMMLeftover bool           `json:"dmmLeftover"`
+	UnknownPaks []string       `json:"unknownPaks"`
+	// UnknownDetails explains each foreign pak (size, time, contents, what it replaced).
+	UnknownDetails []mods.UnknownPak `json:"unknownDetails"`
+	PendingApply   bool              `json:"pendingApply"`
+	AppliedOnce    bool              `json:"appliedOnce"`
+	Settings       mods.Settings     `json:"settings"`
+	RunKey         bool              `json:"runKey"`
+	Mods           []modView         `json:"mods"`
+	Catalog        []catalogView     `json:"catalog"`
+	Repos          []repoView        `json:"repos"` // Frogtech first, then the user's repositories
+	CatalogErr     string            `json:"catalogErr,omitempty"`
+	LoaderUpdate   string            `json:"loaderUpdate,omitempty"`
+	LoaderNotes    []string          `json:"loaderNotes,omitempty"`
+	LastCheck      time.Time         `json:"lastCheck"`
+	LastErr        string            `json:"lastErr,omitempty"`
+	Busy           string            `json:"busy,omitempty"`
+	DataDir        string            `json:"dataDir"`
+	Log            []string          `json:"log"`
 }
 
 // Status gathers everything the page shows.
@@ -91,7 +93,7 @@ func (a *App) Status() statusView {
 		Version: Version, GameRunning: running, PendingApply: a.state.PendingApply, AppliedOnce: a.state.AppliedOnce,
 		Settings: a.state.Settings, RunKey: platform.GetRunAtStartup(), CatalogErr: a.catalogErr, LoaderUpdate: loaderUp, LoaderNotes: loaderNotes,
 		LastCheck: a.lastCheck, LastErr: a.lastErr, Busy: a.busy, DataDir: a.dataDir, Log: logTail(),
-		UnknownPaks: []string{}, Mods: []modView{}, Catalog: []catalogView{},
+		UnknownPaks: []string{}, UnknownDetails: []mods.UnknownPak{}, Mods: []modView{}, Catalog: []catalogView{},
 	}
 	if dir := a.state.GameDir; dir != "" && steam.IsGameDir(dir) {
 		s.GameFound = true
@@ -104,8 +106,11 @@ func (a *App) Status() statusView {
 		_, addons, _ := steam.Paths(dir)
 		s.AddonsDir = addons
 		s.DMM, s.DMMLeftover = mods.DMMState(addons)
-		if u, err := mods.UnknownPaks(addons, a.state.Applied); err == nil && u != nil {
-			s.UnknownPaks = u
+		if u, err := mods.DescribeUnknown(addons, a.state); err == nil {
+			s.UnknownDetails = u
+			for _, d := range u {
+				s.UnknownPaks = append(s.UnknownPaks, d.Name)
+			}
 		}
 	} else {
 		s.Game.Dir = a.state.GameDir

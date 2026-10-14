@@ -1,0 +1,3 @@
+Mod files the loader didn't install now show their size, when they changed, what's inside and which of your mods they replaced
+Put back the loader's version of a replaced mod with one click, or keep the new file: the loader turns off the mod it replaced so the two don't clash
+Fixed: after deleting a file the loader didn't install, the mod it had replaced is written back right away

@@ -471,6 +471,123 @@ func UnknownPaks(addons string, applied []AppliedPak) ([]string, error) {
 	return unknown, nil
 }
 
+// UnknownPak describes a pakNN_dir.vpk the loader didn't write (or that was
+// changed since), for the page: what it is and what it replaced.
+type UnknownPak struct {
+	Name     string      `json:"name"`
+	Size     int64       `json:"size"`
+	Modified time.Time   `json:"modified"`
+	Replaces *Replaced   `json:"replaces,omitempty"` // the loader's mod that wrote a file with this name
+	Contents *VPKSummary `json:"contents,omitempty"`
+}
+
+// Replaced is the loader mod a foreign file took the place of.
+type Replaced struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
+}
+
+// DescribeUnknown returns details for each foreign pak in addons: size, time,
+// a summary of its contents, and the installed mod whose file it replaced
+// (the loader last wrote a file with the same name for that mod).
+func DescribeUnknown(addons string, s *State) ([]UnknownPak, error) {
+	names, err := UnknownPaks(addons, s.Applied)
+	if err != nil {
+		return nil, err
+	}
+	wrote := map[string]string{}
+	for _, a := range s.Applied {
+		wrote[strings.ToLower(a.Name)] = a.ModID
+	}
+	out := []UnknownPak{}
+	for _, n := range names {
+		p := filepath.Join(addons, n)
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		u := UnknownPak{Name: n, Size: info.Size(), Modified: info.ModTime()}
+		if m := s.Mod(wrote[strings.ToLower(n)]); m != nil {
+			u.Replaces = &Replaced{ID: m.ID, Name: m.Name, Version: m.Version}
+		}
+		if sum, err := SummarizeVPK(p); err == nil {
+			u.Contents = sum
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+// RestorePak writes back the file the loader last put at name (matched by
+// its recorded hash in the mod's stored files). Used after deleting a foreign
+// copy, so the loader's own version returns even while other foreign files
+// still block a full apply. It reports whether anything was restored.
+func (st Store) RestorePak(s *State, addons, name string) (bool, error) {
+	for _, a := range s.Applied {
+		if !strings.EqualFold(a.Name, name) || !IsPakName(a.Name) {
+			continue
+		}
+		m := s.Mod(a.ModID)
+		if m == nil || !m.Enabled {
+			return false, nil
+		}
+		for _, f := range m.Files {
+			src := filepath.Join(st.ModDir(m.ID), f)
+			if h, err := fsutil.SHA256File(src); err == nil && h == a.SHA256 {
+				return true, fsutil.CopyFileAtomic(src, filepath.Join(addons, a.Name))
+			}
+		}
+	}
+	return false, nil
+}
+
+// KeepPak takes over one foreign pak as a local mod. If it replaced one of the
+// loader's mods, that mod is turned off (both would load and clash) and the
+// kept file takes its place in the order. It returns the new mod.
+func (st Store) KeepPak(s *State, addons, name string) (*Mod, error) {
+	details, err := DescribeUnknown(addons, s)
+	if err != nil {
+		return nil, err
+	}
+	var d *UnknownPak
+	for i := range details {
+		if strings.EqualFold(details[i].Name, name) {
+			d = &details[i]
+		}
+	}
+	if d == nil {
+		return nil, fmt.Errorf("%s isn't a file the loader didn't install", name)
+	}
+	added, err := st.ImportPaks(s, addons, []string{d.Name})
+	if err != nil {
+		return nil, err
+	}
+	if len(added) != 1 {
+		return nil, fmt.Errorf("couldn't take over %s", name)
+	}
+	m := added[0]
+	if d.Replaces != nil {
+		if old := s.Mod(d.Replaces.ID); old != nil {
+			old.Enabled = false
+			m.Name = old.Name + " (your copy)"
+			// Take its place in the order: same priority as the mod it replaced.
+			var ids []string
+			for _, x := range s.Mods {
+				if x == m {
+					continue
+				}
+				if x == old {
+					ids = append(ids, m.ID)
+				}
+				ids = append(ids, x.ID)
+			}
+			s.SetOrder(ids)
+		}
+	}
+	return m, nil
+}
+
 // ErrUnknownPaks blocks an apply until the user decides about foreign files.
 type ErrUnknownPaks struct{ Files []string }
 
@@ -517,11 +634,15 @@ func (st Store) Apply(s *State, addons string) error {
 			return err
 		}
 		d.Size, d.SHA256, d.ModID = info.Size(), h, modID
-		if p, ok := prev[strings.ToLower(d.Name)]; ok && p.SHA256 == h && p.Size == d.Size {
-			written = append(written, *d)
-			continue // already in place (verified by UnknownPaks)
-		}
 		dst := filepath.Join(addons, d.Name)
+		if p, ok := prev[strings.ToLower(d.Name)]; ok && p.SHA256 == h && p.Size == d.Size {
+			// Already in place (UnknownPaks verified its hash) - unless the file
+			// was deleted since, e.g. a foreign copy was removed: then write it.
+			if fi, err := os.Stat(dst); err == nil && fi.Size() == d.Size {
+				written = append(written, *d)
+				continue
+			}
+		}
 		fsutil.SetHashCache(dst, nil, "")
 		if err := fsutil.CopyFileAtomic(src, dst); err != nil {
 			s.Applied = mergeApplied(s.Applied, written)

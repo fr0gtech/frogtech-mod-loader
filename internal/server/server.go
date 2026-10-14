@@ -296,6 +296,20 @@ func routes(a *app.App) http.Handler {
 		}
 		writeJSON(w, map[string]any{"ok": true, "count": n})
 	})
+	api.HandleFunc("POST /api/foreign/delete-file", jsonOp(func(r *http.Request, b body) error { return a.DeleteForeignFile(b.ID) }))
+	api.HandleFunc("POST /api/foreign/keep", func(w http.ResponseWriter, r *http.Request) {
+		var b body
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&b); err != nil {
+			httpErr(w, err)
+			return
+		}
+		m, err := a.KeepForeign(b.ID)
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "name": m.Name})
+	})
 	api.HandleFunc("POST /api/foreign/delete", func(w http.ResponseWriter, r *http.Request) {
 		n, err := a.DeleteForeign()
 		if err != nil {

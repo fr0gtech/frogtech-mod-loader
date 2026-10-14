@@ -22,7 +22,7 @@ Get it at **[mods.frogtech.dev/mod-loader](https://mods.frogtech.dev/mod-loader)
 It's open source, and every release is built by GitHub Actions from this code with a signed provenance attestation. Check a download with the [GitHub CLI](https://cli.github.com/):
 
 ```
-gh attestation verify FrogLoader_v0.5.1.zip --repo fr0gtech/frogtech-mod-loader
+gh attestation verify FrogLoader_v0.6.0.zip --repo fr0gtech/frogtech-mod-loader
 ```
 
 You can also compare it with `SHA256SUMS` on the release page. The exe isn't code-signed, so Windows may warn you the first time: choose **More info → Run anyway**.

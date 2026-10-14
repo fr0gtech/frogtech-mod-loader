@@ -139,6 +139,12 @@ button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px
 .banner .t { font-weight: 600; }
 .banner .d { color: var(--ash); font-size: 14px; }
 .banner .acts { display: flex; gap: 8px; flex: none; }
+.frows { margin-top: 6px; }
+.frow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.frow:first-child { border-top: none; }
+.frow .txt { flex: 1; min-width: 0; color: var(--text); font-size: 14px; }
+.frow .txt .in { color: var(--ash); font-size: 13px; }
+.frow .acts { display: flex; gap: 8px; flex: none; }
 
 /* mod rows */
 .mrow { display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: transparent; border: 1px solid var(--border); border-radius: var(--rc); transition: border-color .12s, background .12s; }
@@ -708,9 +714,7 @@ function render() {
   if (!S.gameFound) banner("bad", "Couldn't find Deadlock", "Choose the game folder in Settings.", h("button", { class: "outline sm", onclick: () => setTab("settings") }, "Open Settings"));
   if (S.gameRunning) banner("info", "Deadlock is running", "Changes go into the game when you close it.");
   const n = S.unknownPaks.length;
-  if (n) banner("warn", "Found " + plural(n, "mod file") + " the loader didn't install", "Import " + (n === 1 ? "it" : "them") + " so you can manage " + (n === 1 ? "it" : "them") + " here, or delete " + (n === 1 ? "it" : "them") + ".",
-    h("button", { class: "primary sm", onclick: importForeign }, "Import"),
-    h("button", { class: "danger sm", onclick: deleteForeign }, "Delete"));
+  if (n) banner("warn", "Found " + plural(n, "mod file") + " the loader didn't install", h("div", { class: "frows" }, foreignDetails().map(foreignRow)));
   if (S.dmm) banner("warn", "Deadlock Mod Manager is managing mods too", "Use one mod manager at a time, or they'll overwrite each other's files.");
   else if (S.dmmLeftover) banner("info", "Deadlock Mod Manager left a file behind", "It isn't used any more and can go.",
     h("button", { class: "outline sm", onclick: () => quiet(act("dmm/remove-leftover", {}, "Removed the leftover file")) }, "Remove it"));
@@ -866,16 +870,72 @@ async function removeMods(ids) {
   quiet(act("mods/bulk", { ids, action: "remove" }, (r) => (one ? names[0] : plural(r.count, "mod")) + " removed"));
 }
 
-async function importForeign() {
-  const n = S.unknownPaks.length;
-  if (await ask({ key: "import", title: "Import " + plural(n, "mod file") + "?", ok: "Import",
-    body: "The loader takes " + (n === 1 ? "it" : "them") + " over, so you can turn " + (n === 1 ? "it" : "them") + " on and off, reorder and remove " + (n === 1 ? "it" : "them") + " here." }))
-    quiet(act("import", {}, plural(n, "mod file") + " imported"));
+// ---- files in the mods folder that the loader didn't write ----
+// Usually a dev script or another manager copied a pak over one of ours.
+function foreignDetails() {
+  return (S.unknownDetails && S.unknownDetails.length) ? S.unknownDetails : S.unknownPaks.map((name) => ({ name }));
 }
+const modLabel = (r) => r.name + (r.version ? " " + r.version : "");
+function changedWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso), now = new Date(), time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 864e5);
+  if (diff === 0) return "today " + time;
+  if (diff === 1) return "yesterday " + time;
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " " + time;
+}
+// "pak03_dir.vpk, 16 KB, changed today 14:32. It replaced Steam Profiles 1.1."
+function foreignText(d) {
+  let t = d.name;
+  if (d.size) t += ", " + fmtSize(d.size);
+  if (d.modified) t += ", changed " + changedWhen(d.modified);
+  t += ".";
+  if (d.replaces) t += " It replaced " + modLabel(d.replaces) + ".";
+  return t;
+}
+function foreignInside(d) {
+  const c = d.contents;
+  if (!c || !c.files) return null;
+  return "Inside: " + plural(c.files, "file") + (c.folders && c.folders.length ? ", mostly " + c.folders[0] : "") + ".";
+}
+function foreignRow(d) {
+  const inside = foreignInside(d);
+  const acts = d.replaces
+    ? [h("button", { class: "primary sm", onclick: () => putBack(d) }, "Put back " + modLabel(d.replaces)),
+       h("button", { class: "outline sm", onclick: () => keepFile(d) }, "Keep this file")]
+    : [h("button", { class: "primary sm", onclick: () => importFile(d) }, "Import"),
+       h("button", { class: "danger sm", onclick: () => deleteFile(d) }, "Delete")];
+  return h("div", { class: "frow" }, h("div", { class: "txt" }, foreignText(d), inside ? h("div", { class: "in" }, inside) : null), h("div", { class: "acts" }, acts));
+}
+async function putBack(d) {
+  const label = modLabel(d.replaces);
+  if (await ask({ key: "deleteForeign", danger: true, ok: "Put back " + label, title: "Put back " + label + "?",
+    body: foreignText(d) + " The file is deleted from Deadlock's mods folder and the loader puts its own " + label + " back in its place." }))
+    quiet(act("foreign/delete-file", { id: d.name }, label + " is back"));
+}
+async function keepFile(d) {
+  const label = modLabel(d.replaces);
+  if (await ask({ key: "keepForeign", ok: "Keep this file", title: "Keep " + d.name + "?",
+    body: "The loader takes it over as \"" + d.replaces.name + " (your copy)\" and turns off its own " + label + ", so the two don't clash. You can switch back in Your mods." }))
+    quiet(act("foreign/keep", { id: d.name }, (r) => "Kept as " + r.name + ". " + label + " is turned off."));
+}
+async function importFile(d) {
+  if (await ask({ key: "import", title: "Import " + d.name + "?", ok: "Import",
+    body: "The loader takes it over, so you can turn it on and off, reorder and remove it here." }))
+    quiet(act("foreign/keep", { id: d.name }, d.name + " imported"));
+}
+async function deleteFile(d) {
+  if (await ask({ key: "deleteForeign", danger: true, ok: "Delete", title: "Delete " + d.name + "?",
+    body: foreignText(d) + " It's deleted from Deadlock's mods folder. The loader didn't put it there, so nothing takes its place." }))
+    quiet(act("foreign/delete-file", { id: d.name }, d.name + " deleted"));
+}
+// "Delete files the loader didn't install" in the list menu: all at once.
 async function deleteForeign() {
-  const n = S.unknownPaks.length;
-  if (await ask({ key: "deleteForeign", danger: true, ok: "Delete", title: "Delete " + plural(n, "mod file") + "?",
-    body: h("div", {}, "These files are deleted from Deadlock's mods folder:", h("div", { class: "path", style: "margin-top:6px" }, S.unknownPaks.join(", "))) }))
+  const ds = foreignDetails();
+  if (await ask({ key: "deleteForeign", danger: true, ok: "Delete", title: "Delete " + plural(ds.length, "mod file") + "?",
+    body: h("div", {}, "These files are deleted from Deadlock's mods folder:", h("ul", {}, ds.map((d) => h("li", {}, d.name +
+      (d.replaces ? ": the loader puts " + modLabel(d.replaces) + " back" : ": nothing takes its place")))) ) }))
     quiet(act("foreign/delete", {}, (r) => plural(r.count, "file") + " deleted"));
 }
 

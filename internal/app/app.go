@@ -616,6 +616,17 @@ func (a *App) BulkMods(ids []string, action string) (int, error) {
 // DeleteForeign deletes pakNN_dir.vpk files in addons that the loader didn't
 // write (only after the user confirmed in the page).
 func (a *App) DeleteForeign() (int, error) {
+	return a.deleteForeign("")
+}
+
+// DeleteForeignFile deletes one foreign pak ("put back" in the page: the
+// loader then writes its own file again).
+func (a *App) DeleteForeignFile(name string) error {
+	_, err := a.deleteForeign(name)
+	return err
+}
+
+func (a *App) deleteForeign(only string) (int, error) {
 	defer a.beginOp("Deleting foreign paks")()
 	dir := a.GameDir()
 	if dir == "" {
@@ -631,18 +642,58 @@ func (a *App) DeleteForeign() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	n := 0
+	var deleted []string
 	for _, f := range unknown {
-		if !mods.IsPakName(f) {
+		if !mods.IsPakName(f) || (only != "" && !strings.EqualFold(f, only)) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(addons, f)); err != nil {
-			return n, err
+			return len(deleted), err
 		}
-		n++
+		deleted = append(deleted, f)
+		// Put the loader's own file back right away (a full apply may still be
+		// blocked by other foreign files).
+		a.mu.Lock()
+		restored, err := a.store.RestorePak(a.state, addons, f)
+		a.mu.Unlock()
+		if err != nil {
+			log.Printf("putting back %s: %v", f, err)
+		} else if restored {
+			log.Printf("put back the loader's %s", f)
+		}
 	}
-	log.Printf("deleted %d foreign pak(s): %s", n, strings.Join(unknown, ", "))
-	return n, a.changedLocked()
+	if only != "" && len(deleted) == 0 {
+		return 0, fmt.Errorf("%s isn't a file the loader didn't install", only)
+	}
+	log.Printf("deleted %d foreign pak(s): %s", len(deleted), strings.Join(deleted, ", "))
+	return len(deleted), a.changedLocked()
+}
+
+// KeepForeign takes over one foreign pak as a mod of its own. If it replaced
+// one of the loader's mods, that mod is turned off so the two don't clash.
+func (a *App) KeepForeign(name string) (*mods.Mod, error) {
+	defer a.beginOp("Keeping " + name)()
+	dir := a.GameDir()
+	if dir == "" {
+		return nil, ErrNoGame
+	}
+	if platform.IsGameRunning() {
+		return nil, ErrGameRunning
+	}
+	_, addons, _ := steam.Paths(dir)
+	a.mu.Lock()
+	m, err := a.store.KeepPak(a.state, addons, name)
+	a.saveLocked()
+	var kept mods.Mod
+	if m != nil {
+		kept = *m
+	}
+	a.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("kept %s as %s", name, kept.Name)
+	return &kept, a.changedLocked()
 }
 
 // SetDontAsk remembers (or forgets) "don't ask again" for a question key.
