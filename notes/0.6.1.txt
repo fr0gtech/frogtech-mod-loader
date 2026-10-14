@@ -1,0 +1,2 @@
+Switching tabs closes a mod's details instead of leaving them open over the new tab
+Updates no longer count as new downloads on mods.frogtech.dev

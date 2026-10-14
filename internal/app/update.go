@@ -398,7 +398,7 @@ func (a *App) SelfUpdate(ctx context.Context, c *catalog.Catalog) error {
 	pkg := filepath.Join(dir, "FrogLoader.update.zip")
 	newPath, oldPath := exe+".new", exe+".old"
 	defer os.Remove(pkg)
-	if err := fetch.Download(ctx, c.Loader.URL, pkg, fetch.Checksum{Algo: "sha256", Hex: c.Loader.SHA256}); err != nil {
+	if err := fetch.Download(ctx, updateURL(c.Loader.URL), pkg, fetch.Checksum{Algo: "sha256", Hex: c.Loader.SHA256}); err != nil {
 		return err
 	}
 	if err := extractLoaderExe(pkg, newPath); err != nil {

@@ -688,6 +688,7 @@ function rowThumb(name, image, own) {
 // ---- tabs ----
 function setTab(t) {
   tab = t;
+  while (modalStack.length) modalStack[modalStack.length - 1].close(); // a mod's details belong to the tab it was opened on
   for (const b of document.querySelectorAll("nav.tabs button")) b.classList.toggle("on", b.dataset.tab === t);
   for (const id of ["mods", "browse", "settings"]) $("tab-" + id).classList.toggle("hidden", id !== t);
   $("banners").classList.toggle("browse", t === "browse"); // the grid gets the room; only problems show there

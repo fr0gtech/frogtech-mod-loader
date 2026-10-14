@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -272,6 +273,19 @@ func (a *App) TempFile(pattern string) (string, error) {
 	return name, nil
 }
 
+// updateURL marks a download from our site as an update (?update=1), so the
+// site's download count only counts new installs. Other hosts get the URL as is.
+func updateURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host != "mods.frogtech.dev" || !strings.HasPrefix(u.Path, "/dl/") {
+		return raw
+	}
+	q := u.Query()
+	q.Set("update", "1")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // InstallCatalogMod downloads (or updates) one of our mods.
 func (a *App) InstallCatalogMod(ctx context.Context, id string) error {
 	defer a.beginOp("Installing " + id)()
@@ -293,7 +307,14 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 		return err
 	}
 	defer os.Remove(tmp)
-	if err := fetch.Download(ctx, cm.URL, tmp, fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}); err != nil {
+	a.mu.Lock()
+	update := a.state.Mod(cm.ID) != nil
+	a.mu.Unlock()
+	src := cm.URL
+	if update {
+		src = updateURL(src)
+	}
+	if err := fetch.Download(ctx, src, tmp, fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}); err != nil {
 		return err
 	}
 	return a.installFiles(&mods.Mod{ID: cm.ID, Source: mods.SourceCatalog, Name: cm.Name, Version: cm.Version, Page: cm.Page, Image: cm.Image}, tmp, cm.ID+".vpk")
