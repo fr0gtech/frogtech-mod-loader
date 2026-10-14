@@ -12,10 +12,14 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -42,9 +46,40 @@ func Get(ctx context.Context, url string) (*http.Response, error) {
 // GetAuth is Get that adds a repository key where it may go (see
 // Auth): on the request and on redirects, re-checked for every hop.
 func GetAuth(ctx context.Context, url string, auth *Auth) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; ; attempt++ {
+		resp, retryAfter, err := getOnce(ctx, url, auth)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if attempt >= len(RetryDelays) || !retryable(err) || ctx.Err() != nil {
+			return nil, lastErr
+		}
+		wait := RetryDelays[attempt]
+		if retryAfter > 0 {
+			wait = min(retryAfter, maxRetryAfter)
+		}
+		log.Printf("%v; trying again in %s", err, wait)
+		select {
+		case <-ctx.Done():
+			return nil, lastErr
+		case <-time.After(wait):
+		}
+	}
+}
+
+// RetryDelays are the waits between attempts when a server or the network
+// hiccups (502/503/504, 429, refused or reset connections, timeouts): a
+// short outage, such as a site redeploying, never shows up as an error.
+var RetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 7 * time.Second}
+
+const maxRetryAfter = 10 * time.Second
+
+func getOnce(ctx context.Context, url string, auth *Auth) (*http.Response, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", UserAgent)
 	auth.Apply(req)
@@ -59,13 +94,49 @@ func GetAuth(ctx context.Context, url string, auth *Auth) (*http.Response, error
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, &StatusError{URL: url, Code: resp.StatusCode}
+		return nil, retryAfterOf(resp), &StatusError{URL: url, Code: resp.StatusCode}
 	}
-	return resp, nil
+	return resp, 0, nil
+}
+
+// retryable: transient server answers and network failures. Other 4xx
+// (wrong key, not found) are final.
+func retryable(err error) bool {
+	var se *StatusError
+	if errors.As(err, &se) {
+		switch se.Code {
+		case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusTooManyRequests:
+			return true
+		}
+		return false
+	}
+	var ne net.Error
+	var oe *net.OpError
+	if errors.As(err, &oe) && (oe.Op == "dial" || oe.Op == "read") {
+		return true // refused/reset/unreachable, incl. Windows' WSA error codes
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) ||
+		(errors.As(err, &ne) && ne.Timeout())
+}
+
+// retryAfterOf reads Retry-After (seconds or an HTTP date) on 429/503.
+func retryAfterOf(resp *http.Response) time.Duration {
+	v := resp.Header.Get("Retry-After")
+	if v == "" {
+		return 0
+	}
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		return max(time.Until(t), 0)
+	}
+	return 0
 }
 
 // Checksum to verify a download against.
