@@ -226,14 +226,19 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 .lightbox .count { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: var(--ash); font-size: 14px; }
 
 /* browse */
-.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 18px 0 14px; }
-.toolbar select { max-width: 200px; }
-.toolbar .search { flex: 1 1 180px; display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--input); border-radius: var(--r); padding: 0 10px; color: var(--ash); }
-.toolbar .search input { border: none; padding: 8px 0; background: none; }
+/* One fixed-height row: every control is 36px, so switching sources (which
+   shows or hides search and the selects) never moves anything. */
+.toolbar { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; height: 36px; margin: 18px 0 14px; }
+.toolbar > * { height: 36px; box-sizing: border-box; flex: none; }
+.toolbar select { flex: 0 1 190px; min-width: 104px; padding: 0 8px; }
+.toolbar .search { flex: 1 1 160px; min-width: 100px; display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--input); border-radius: var(--r); padding: 0 10px; color: var(--ash); }
+.toolbar .search input { border: none; padding: 0; height: 100%; background: none; }
 .toolbar .search input:focus-visible { outline: none; }
 .toolbar .search:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
-.seg { display: inline-flex; background: var(--mut); border: 1px solid var(--border); border-radius: var(--r); padding: 2px; }
-.seg button { background: none; padding: 6px 14px; color: var(--ash); }
+.seg { display: inline-flex; align-items: stretch; background: var(--mut); border: 1px solid var(--border); border-radius: var(--r); padding: 2px; flex: 0 0 auto; max-width: 62%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { background: none; padding: 0 14px; height: 100%; color: var(--ash); flex: none; }
+.seg button img { flex: none; }
 .seg button.on { background: color-mix(in oklab, var(--sky) 16%, var(--slate)); color: var(--text); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .tile { background: var(--card); border: 1px solid var(--border); border-radius: var(--rc); overflow: hidden; display: flex; flex-direction: column; cursor: pointer; transition: border-color .15s; }
@@ -273,7 +278,7 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 .det h4 { font-size: 14px; margin: 16px 0 4px; }
 
 @media (max-width: 900px) {
-  .toolbar select { max-width: 150px; }
+  .toolbar select { flex-basis: 130px; }
   .cat .thumbs { width: 96px; }
   .mrow { gap: 10px; }
   .mrow .grip { display: none; }
@@ -338,7 +343,7 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
   <div id="tab-browse" class="hidden">
     <div class="toolbar">
       <span class="seg" id="bModel"><button data-model="Frogtech" class="on">Frogtech</button><button data-model="Mod">Mods</button><button data-model="Sound">Sounds</button></span>
-      <label class="search gbonly"><span id="searchIcon"></span><input type="search" id="bSearch" placeholder="Search Deadlock mods"></label>
+      <label class="search gbonly"><span id="searchIcon"></span><input type="search" id="bSearch" placeholder="Search mods"></label>
       <select id="bSort" class="gbonly" title="Sort" aria-label="Sort">
         <option value="liked">Most liked</option>
         <option value="downloaded">Most downloaded</option>
@@ -1242,7 +1247,7 @@ function applySource() {
   $("bModel").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x.dataset.model === B.model));
   if (frog) { $("bNote").classList.add("hidden"); B.gen++; renderFrogtech(true); return; }
   B.ftag = null;
-  $("bSearch").placeholder = "Search Deadlock " + (B.model === "Sound" ? "sounds" : "mods");
+  $("bSearch").placeholder = "Search " + (B.model === "Sound" ? "sounds" : "mods");
   loadCategories(); browseReset();
 }
 async function loadCategories() {

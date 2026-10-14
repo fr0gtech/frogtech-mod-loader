@@ -1,0 +1,2 @@
+The Browse toolbar no longer jumps when switching sources
+Update checks ride out short server hiccups instead of showing an error
