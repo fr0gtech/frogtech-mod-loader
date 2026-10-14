@@ -133,7 +133,7 @@ button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px
 #banners { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
 #banners:empty { display: none; }
 #banners.browse .banner:not(.bad) { display: none; }
-.banner { --c: var(--sky); display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: var(--rc); padding: 12px 14px; margin-top: 12px; }
+.banner { --c: var(--sky); display: flex; align-items: center; gap: 14px; background: color-mix(in srgb, var(--c) 7%, var(--card)); border: 1px solid color-mix(in srgb, var(--c) 32%, var(--border)); border-radius: var(--rc); padding: 12px 14px; margin-top: 12px; }
 .banner.warn { --c: var(--brass); } .banner.bad { --c: var(--bad); }
 .banner > svg { color: var(--c); width: 20px; height: 20px; }
 .banner .t { font-weight: 600; }
@@ -208,7 +208,7 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 .menu button.red { color: var(--bad); }
 .menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
 #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(400px, calc(100% - 36px)); }
-.toast { --c: var(--jade); display: flex; gap: 10px; align-items: flex-start; background: var(--pop); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: var(--rc); padding: 11px 13px; cursor: pointer; animation: tin .18s ease-out; }
+.toast { --c: var(--jade); display: flex; gap: 10px; align-items: flex-start; background: color-mix(in srgb, var(--c) 8%, var(--pop)); border: 1px solid color-mix(in srgb, var(--c) 32%, var(--border)); border-radius: var(--rc); padding: 11px 13px; cursor: pointer; animation: tin .18s ease-out; }
 .toast.error { --c: var(--coral); } .toast.info { --c: var(--sky); }
 .toast > svg { color: var(--c); margin-top: 3px; }
 @keyframes tin { from { transform: translateY(8px); opacity: 0; } }

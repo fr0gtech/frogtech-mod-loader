@@ -1,0 +1,1 @@
+Cleaner notices: banners and toasts are tinted in their colour instead of a coloured left edge that got cut off at the rounded corners
