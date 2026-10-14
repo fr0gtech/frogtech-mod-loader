@@ -1,0 +1,4 @@
+The Mods tab shows only your installed mods; Frogtech mods moved to Browse
+Click a tag to find similar mods on GameBanana
+Updates section in Settings, and every update check now tells you the result
+Smaller, easier to read headings

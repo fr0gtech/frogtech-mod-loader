@@ -1,0 +1,68 @@
+name: Release
+
+# Builds FrogLoader.exe from this repository's code and publishes it with
+# build provenance, so anyone can check a download came from here:
+#   gh attestation verify FrogLoader_v<version>.zip --repo fr0gtech/frogtech-mod-loader
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (must match the VERSION file, e.g. 0.5.0)"
+        required: true
+
+permissions:
+  contents: write     # create the release
+  id-token: write     # sign the provenance attestation
+  attestations: write # store it
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: .go-version # the exact Go release build.sh expects (reproducible builds)
+          cache: false
+
+      - name: Version
+        id: v
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then V="${GITHUB_REF_NAME#v}"; else V="${{ inputs.version }}"; fi
+          [ "$V" = "$(cat VERSION)" ] || { echo "::error::version $V doesn't match the VERSION file ($(cat VERSION))"; exit 1; }
+          [ -f "notes/$V.txt" ] || { echo "::error::notes/$V.txt is missing"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Vet, test and build
+        run: GO=go ./build.sh "${{ steps.v.outputs.version }}"
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/FrogLoader.exe
+            dist/FrogLoader_v${{ steps.v.outputs.version }}.zip
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          {
+            sed 's/^/- /' "notes/$V.txt"
+            echo
+            echo "**Check your download.** It was built by GitHub Actions from this tag, with a signed provenance attestation:"
+            echo
+            echo '```'
+            echo "gh attestation verify FrogLoader_v$V.zip --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "SHA256:"
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > release-notes.md
+          gh release create "v$V" --target "$GITHUB_SHA" --title "Frogtech Mod Loader $V" --notes-file release-notes.md \
+            "dist/FrogLoader_v$V.zip" dist/FrogLoader.exe dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.txt

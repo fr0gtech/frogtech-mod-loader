@@ -1,0 +1,1483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frogtech Mod Loader</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+/* Jost is bundled in the exe (SIL OFL 1.1). */
+@font-face { font-family: "Jost"; src: url(/fonts/Jost-latin.woff2) format("woff2"); font-weight: 100 900; font-display: swap; }
+
+/* Frogtech design (shared with mods.frogtech.dev): neutral greys; colour only means something. */
+:root {
+  --ink: #0e0e10; --coal: #17171a; --slate: #202024; --line: #2c2c31; --smoke: #9b9ba3; --chalk: #ededef;
+  --jade: #4fc38a; --brass: #e0b24f; --coral: #f07c5d; --rose: #e879a6; --violet: #9d8cf2; --sky: #5fb4f0; --teal: #45c7c0;
+  /* roles */
+  --bg: var(--ink); --card: var(--coal); --pop: var(--slate); --sec: var(--slate); --mut: var(--coal);
+  --border: var(--line); --input: #3a3a40; --text: var(--chalk); --ash: var(--smoke);
+  --primary: var(--jade); --bad: var(--coral); --focus: var(--sky);
+  --tag-hud: var(--brass); --tag-theme: var(--rose); --tag-video: var(--violet); --tag-social: var(--sky); --tag-menus: var(--teal);
+  --tag-access: var(--coral); --tag-tool: var(--jade); --tag-retired: var(--smoke);
+  --r: 6px; --rc: 8px;
+  --sans: "Jost", system-ui, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+body { overflow: hidden; height: 100vh; min-width: 760px; }
+#app { display: flex; flex-direction: column; height: 100vh; }
+#scroller { flex: 1; overflow-y: scroll; overflow-x: hidden; }
+
+/* scrollbars: thin, ash-green thumb, no track (Chromium/WebView2; standard properties elsewhere) */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3a3a40; border-radius: 8px; border: 1px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #4a4a52; background-clip: padding-box; }
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: #3a3a40 transparent; } }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, h4 { font-family: var(--sans); font-weight: 600; letter-spacing: 0; line-height: 1.3; margin: 0; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; } }
+svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+svg.i.fill { fill: currentColor; stroke: none; }
+
+main { max-width: 1120px; margin: 0 auto; padding: 0 20px 64px; }
+/* the window's own title bar (the window has no native frame) */
+#titlebar { height: 44px; flex: none; display: flex; align-items: stretch; background: var(--bg); border-bottom: 1px solid var(--border); user-select: none; position: relative; z-index: 30; }
+#titlebar .brand { display: flex; align-items: center; padding: 0 10px 0 12px; }
+#titlebar .logo { width: 26px; height: 26px; display: block; }
+#pupils.home { transition: transform .8s ease-out; }
+.appname { text-align: center; color: var(--ash); font-size: 13px; margin: 22px 0 4px; }
+#titlebar .drag { flex: 1; min-width: 24px; }
+#titlebar .acts { display: flex; align-items: center; gap: 10px; padding-right: 8px; }
+#titlebar .acts button.play { padding: 6px 14px; font-size: 14px; }
+nav.tabs { display: flex; gap: 2px; align-items: stretch; }
+nav.tabs button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 12px; color: var(--ash); font: 500 15px var(--sans); cursor: pointer; }
+nav.tabs button:hover:not(:disabled) { color: var(--text); background: none; }
+nav.tabs button.on { color: var(--text); border-bottom-color: var(--chalk); }
+nav.tabs .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--jade); margin-left: 6px; vertical-align: 2px; }
+nav.tabs .count { color: var(--ash); margin-left: 6px; font-weight: 400; font-size: 13px; }
+.wctl { display: flex; }
+.wctl button { width: 46px; height: 44px; padding: 0; border-radius: 0; background: none; color: var(--ash); justify-content: center; }
+.wctl button:hover:not(:disabled) { background: var(--sec); color: var(--text); }
+.wctl button.close:hover:not(:disabled) { background: var(--coral); color: var(--ink); }
+.wctl svg { width: 15px; height: 15px; stroke-width: 1.6; }
+/* resize handles along the edges (hidden when maximized) */
+.edge { position: fixed; z-index: 100; }
+.edge.n { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.edge.s { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.edge.w { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.edge.e { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.edge.nw { left: 0; top: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+.edge.ne { right: 0; top: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.edge.sw { left: 0; bottom: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.edge.se { right: 0; bottom: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+html.maximized .edge { display: none; }
+.grow { flex: 1; }
+.hidden { display: none !important; }
+
+/* controls */
+button, .btn { font: 500 14px/1.2 var(--sans); color: var(--text); background: var(--sec); border: 1px solid transparent; border-radius: var(--r); padding: 8px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+button:hover:not(:disabled) { background: #29292e; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--chalk); color: var(--ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #ffffff; }
+button.outline { background: none; border-color: var(--input); }
+button.outline:hover:not(:disabled) { background: var(--sec); }
+button.ghost { background: none; color: var(--ash); }
+button.ghost:hover:not(:disabled) { background: var(--sec); color: var(--text); }
+button.danger { background: none; border-color: color-mix(in oklab, var(--bad) 50%, transparent); color: var(--bad); }
+button.danger:hover:not(:disabled) { background: color-mix(in oklab, var(--bad) 12%, transparent); }
+button.danger.solid { background: var(--coral); color: var(--ink); font-weight: 600; border-color: var(--coral); }
+button.sm { padding: 5px 10px; font-size: 13px; }
+button.icon { padding: 6px; }
+button.play { padding: 10px 20px; font-size: 15px; }
+input[type=text], input[type=search], input[type=password], select { font: 15px var(--sans); color: var(--text); background: var(--bg); border: 1px solid var(--input); border-radius: var(--r); padding: 8px 11px; min-width: 0; }
+input[type=text], input[type=search], input[type=password] { flex: 1; }
+input::placeholder { color: #6c6c74; }
+input[type=checkbox] { accent-color: var(--sky); width: 16px; height: 16px; margin: 0; cursor: pointer; flex: none; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ash { color: var(--ash); }
+.brass { color: var(--brass); font-weight: 500; }
+.path { font-family: Consolas, ui-monospace, monospace; font-size: 13px; word-break: break-all; color: var(--ash); }
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch span { position: absolute; inset: 0; background: var(--input); border-radius: 99px; cursor: pointer; transition: .15s; }
+.switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: var(--text); border-radius: 50%; transition: .15s; }
+.switch input:checked + span { background: var(--primary); }
+.switch input:checked + span::before { transform: translateX(16px); background: var(--ink); }
+.switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: s .8s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+
+/* chips (the site's Tag component) */
+.chip { --c: var(--tag-hud); display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 1px 10px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap;
+  color: var(--c); border: 1px solid color-mix(in oklab, var(--c) 45%, transparent); background: color-mix(in oklab, var(--c) 10%, transparent); }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+button.chip { font: 500 12px/20px var(--sans); padding: 1px 10px; gap: 6px; cursor: pointer; background: color-mix(in oklab, var(--c) 10%, transparent); }
+button.chip:hover:not(:disabled) { background: color-mix(in oklab, var(--c) 18%, transparent); border-color: var(--c); }
+button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.chip.plain { --c: var(--ash); }
+.chip.plain::before { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* cards */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--rc); padding: 14px 16px; margin: 14px 0 0; }
+.card > .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; min-height: 30px; }
+.card > .head h2 { font-size: 16px; }
+.card > .head .sub { color: var(--ash); font-size: 14px; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+
+/* banners */
+#banners { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+#banners:empty { display: none; }
+#banners.browse .banner:not(.bad) { display: none; }
+.banner { --c: var(--sky); display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: var(--rc); padding: 12px 14px; margin-top: 12px; }
+.banner.warn { --c: var(--brass); } .banner.bad { --c: var(--bad); }
+.banner > svg { color: var(--c); width: 20px; height: 20px; }
+.banner .t { font-weight: 600; }
+.banner .d { color: var(--ash); font-size: 14px; }
+.banner .acts { display: flex; gap: 8px; flex: none; }
+
+/* mod rows */
+.mrow { display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: transparent; border: 1px solid var(--border); border-radius: var(--rc); transition: border-color .12s, background .12s; }
+.mrow:hover { border-color: #3a3a40; background: color-mix(in oklab, var(--slate) 50%, transparent); }
+.mrow.off .thumbs, .mrow.off .info { opacity: .5; }
+.mrow.sel { border-color: color-mix(in oklab, var(--sky) 60%, transparent); background: color-mix(in oklab, var(--sky) 7%, transparent); }
+.mrow.dragging { opacity: .3; }
+.mrow.dropbefore { box-shadow: 0 -2px 0 var(--sky); }
+.mrow .grip { color: #5a5a62; cursor: grab; display: flex; }
+.thumbs { width: 96px; aspect-ratio: 16 / 9; border-radius: var(--r); overflow: hidden; flex: none; background: var(--sec); }
+.thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph { width: 100%; height: 100%; display: grid; place-items: center; font: 600 20px var(--sans); color: #ededefcc; }
+.ph svg { width: 22px; height: 22px; color: var(--ash); }
+.mrow .info { flex: 1; min-width: 0; }
+.mrow .name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow .title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mrow .title h3 { font-size: 15px; }
+.mrow .meta { color: var(--ash); font-size: 13px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 3px; }
+.mrow .desc { color: var(--ash); font-size: 14px; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mrow .side { display: flex; align-items: center; gap: 8px; flex: none; }
+.repo .thumbs { width: 44px; aspect-ratio: 1; }
+.repo .ph { font-size: 18px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.field label { color: var(--ash); font-size: 13px; }
+.field input { flex: none; width: 100%; }
+.preview { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: var(--rc); background: var(--coal); }
+.det .hero { width: 100%; aspect-ratio: 16 / 9; max-height: min(420px, 48vh); object-fit: cover; border-radius: var(--r); display: block; cursor: zoom-in; background: #000; }
+.cat .thumbs { width: 128px; }
+.badge-ok { color: var(--primary); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 14px; }
+.bulkbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 10px; border-radius: var(--rc); background: var(--sec); border: 1px solid var(--input); position: sticky; top: 8px; z-index: 5; }
+.hint { color: var(--ash); font-size: 13px; margin-top: 10px; }
+.empty { text-align: center; padding: 28px 12px; color: var(--ash); border: 1px dashed var(--input); border-radius: var(--rc); }
+.empty h3 { color: var(--text); font-size: 16px; margin-bottom: 2px; }
+.empty .row { justify-content: center; margin-top: 14px; }
+.skel { background: linear-gradient(90deg, var(--coal) 0%, var(--slate) 50%, var(--coal) 100%); background-size: 200% 100%; animation: sk 1.4s ease-in-out infinite; border-radius: var(--rc); }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.skel.rowsk { height: 76px; }
+.drop { border: 1px dashed var(--input); border-radius: var(--rc); padding: 22px; text-align: center; color: var(--ash); cursor: pointer; transition: .12s; display: grid; place-items: center; gap: 6px; }
+.drop svg { width: 22px; height: 22px; }
+.drop:hover { border-color: var(--smoke); color: var(--text); }
+.drop.over { border-color: var(--sky); color: var(--text); background: color-mix(in oklab, var(--sky) 7%, transparent); }
+
+/* settings */
+.setting { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border); }
+.setting:first-child { border-top: none; padding-top: 2px; }
+.setting .main { flex: 1; }
+.setting .h { color: var(--ash); font-size: 14px; }
+details.adv > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary h2 { font-size: 16px; }
+details.adv > summary svg { transition: transform .15s; color: var(--ash); }
+details.adv[open] > summary svg { transform: rotate(90deg); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; font-size: 14px; margin-top: 14px; }
+.kv > span:nth-child(odd) { color: var(--ash); }
+#log { max-height: 240px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px; white-space: pre-wrap; font: 12px/1.5 Consolas, ui-monospace, monospace; color: var(--ash); margin-top: 8px; }
+
+/* menus, toasts, modals */
+.menu { position: fixed; z-index: 60; background: var(--pop); border: 1px solid var(--border); border-radius: var(--rc); padding: 4px; min-width: 210px; }
+.menu button { display: flex; width: 100%; background: none; padding: 8px 10px; border-radius: var(--r); font-weight: 400; }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--sec); outline: none; }
+.menu button.red { color: var(--bad); }
+.menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
+#toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(400px, calc(100% - 36px)); }
+.toast { --c: var(--jade); display: flex; gap: 10px; align-items: flex-start; background: var(--pop); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: var(--rc); padding: 11px 13px; cursor: pointer; animation: tin .18s ease-out; }
+.toast.error { --c: var(--coral); } .toast.info { --c: var(--sky); }
+.toast > svg { color: var(--c); margin-top: 3px; }
+@keyframes tin { from { transform: translateY(8px); opacity: 0; } }
+.modal { position: fixed; inset: 44px 0 0 0; background: rgba(5, 5, 6, .78); z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 36px 16px; overflow-y: auto; animation: fin .12s; }
+@keyframes fin { from { opacity: 0; } }
+.modal .box { background: var(--pop); border: 1px solid var(--border); border-radius: var(--rc); width: 100%; padding: 20px 22px; position: relative; }
+.modal .box.small { max-width: 460px; margin-top: 9vh; }
+.modal .box.wide { max-width: 920px; }
+.modal h3 { font-size: 18px; margin: 0 34px 8px 0; }
+.modal .body { color: var(--ash); }
+.modal .body ul { margin: 8px 0; padding-left: 20px; color: var(--text); }
+.modal .actions { display: flex; gap: 8px; align-items: center; margin-top: 20px; }
+.modal .x { position: absolute; right: 12px; top: 12px; }
+.modal label.dont { display: flex; gap: 8px; align-items: center; color: var(--ash); font-size: 14px; cursor: pointer; }
+.lightbox { position: fixed; inset: 44px 0 0 0; z-index: 80; background: rgba(3, 3, 4, .94); display: flex; align-items: center; justify-content: center; animation: fin .12s; }
+.lightbox img { width: auto; height: auto; max-width: calc(100vw - 140px); max-height: calc(100vh - 130px); min-width: min(60vw, 100%); object-fit: contain; border-radius: var(--r); }
+.lightbox .nav { position: absolute; top: 50%; transform: translateY(-50%); background: var(--sec); padding: 10px; border-radius: 99px; }
+.lightbox .nav.prev { left: 18px; } .lightbox .nav.next { right: 18px; }
+.lightbox .nav svg { width: 22px; height: 22px; }
+.lightbox .x { position: absolute; right: 18px; top: 16px; }
+.lightbox .count { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: var(--ash); font-size: 14px; }
+
+/* browse */
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 18px 0 14px; }
+.toolbar select { max-width: 200px; }
+.toolbar .search { flex: 1 1 180px; display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--input); border-radius: var(--r); padding: 0 10px; color: var(--ash); }
+.toolbar .search input { border: none; padding: 8px 0; background: none; }
+.toolbar .search input:focus-visible { outline: none; }
+.toolbar .search:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+.seg { display: inline-flex; background: var(--mut); border: 1px solid var(--border); border-radius: var(--r); padding: 2px; }
+.seg button { background: none; padding: 6px 14px; color: var(--ash); }
+.seg button.on { background: color-mix(in oklab, var(--sky) 16%, var(--slate)); color: var(--text); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.tile { background: var(--card); border: 1px solid var(--border); border-radius: var(--rc); overflow: hidden; display: flex; flex-direction: column; cursor: pointer; transition: border-color .15s; }
+.tile:hover { border-color: #45454c; }
+.tile:hover .thumb img { transform: scale(1.02); }
+.tile .line1 { color: var(--ash); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .nameline { display: flex; align-items: baseline; gap: 8px; }
+.tile .nameline h3 { flex: 1; min-width: 0; -webkit-line-clamp: 1; }
+.tile .ph { aspect-ratio: auto; position: absolute; inset: 0; font-size: 38px; }
+.tile.skel { height: 300px; cursor: default; border: none; }
+.thumb { position: relative; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
+.thumb .noimg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--sky); background: var(--slate); }
+.thumb .noimg svg { width: 38px; height: 38px; }
+.thumb .tag { position: absolute; left: 8px; top: 8px; }
+.thumb .tag .chip { background: rgba(14, 14, 16, .85); }
+.blur img { filter: blur(18px) brightness(.6); transform: scale(1.1) !important; }
+.blur::after { content: "Mature — click to show"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--text); font-weight: 500; font-size: 14px; }
+.tile .blur::after { content: ""; }
+.tile .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.tile h3 { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .by { color: var(--ash); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats { color: var(--ash); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.stats span { display: inline-flex; align-items: center; gap: 4px; }
+.stats svg { width: 14px; height: 14px; }
+.tile .foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 6px; }
+#sentinel { height: 56px; display: grid; place-items: center; color: var(--ash); }
+.gallery .big { width: 100%; max-height: 440px; object-fit: contain; background: #000; border-radius: var(--r); display: block; cursor: zoom-in; }
+.gallery .strip { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; }
+.gallery .strip img { height: 56px; border-radius: 4px; cursor: pointer; opacity: .55; border: 2px solid transparent; }
+.gallery .strip img.on { opacity: 1; border-color: var(--chalk); }
+.gallery.blur { position: relative; overflow: hidden; border-radius: var(--r); cursor: pointer; }
+.gallery.blur .big { cursor: pointer; }
+.text { white-space: pre-wrap; color: var(--ash); font-size: 14px; line-height: 1.6; max-height: 300px; overflow: auto; }
+.files .file { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.files .file:first-child { border-top: none; }
+.det h4 { font-size: 14px; margin: 16px 0 4px; }
+
+@media (max-width: 900px) {
+  .toolbar select { max-width: 150px; }
+  .cat .thumbs { width: 96px; }
+  .mrow { gap: 10px; }
+  .mrow .grip { display: none; }
+  .banner { padding: 10px 12px; gap: 12px; }
+  .banner .d { font-size: 13px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="titlebar">
+  <div class="brand" id="brand" title="Frogtech Mod Loader"><svg id="frog" class="logo" viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="60" r="40" fill="#4cc25a"/><circle cx="30" cy="36" r="19" fill="#f2f5ef"/><circle cx="70" cy="36" r="19" fill="#f2f5ef"/>
+    <g id="pupils"><circle cx="30" cy="36" r="10" fill="#121a14"/><circle cx="70" cy="36" r="10" fill="#121a14"/></g></svg></div>
+  <nav class="tabs" aria-label="Sections">
+    <button data-tab="mods" class="on">Mods<span class="count" id="modCount"></span></button>
+    <button data-tab="browse">Browse</button>
+    <button data-tab="settings">Settings<span class="dot hidden" id="setDot" title="An update for the loader is ready"></span></button>
+  </nav>
+  <div class="drag"></div>
+  <div class="acts">
+    <span id="busy" class="ash hidden" style="font-size:13px;display:inline-flex;gap:8px;align-items:center;white-space:nowrap"></span>
+    <button class="primary play" id="play"></button>
+  </div>
+  <div class="wctl">
+    <button id="wMin" title="Minimise" aria-label="Minimise"></button>
+    <button id="wMax" title="Maximise" aria-label="Maximise"></button>
+    <button id="wClose" class="close" title="Close" aria-label="Close"></button>
+  </div>
+</div>
+<div id="scroller">
+<div id="banners"></div>
+<main>
+  <div id="gate" class="banner bad hidden"><div class="grow"><div class="t">The loader isn't running</div><div class="d">Start Frogtech Mod Loader again to reopen it.</div></div></div>
+
+  <div id="tab-mods">
+    <div class="card">
+      <div class="head"><h2>Your mods</h2><span class="grow"></span>
+        <button class="ghost sm" id="checkBtn">Check for updates</button>
+        <button class="ghost sm" id="selectAll">Select all</button>
+        <button class="ghost sm" id="applyBtn">Apply changes</button>
+        <button class="ghost icon" id="listMenu" title="More" aria-label="More actions"></button>
+      </div>
+      <div id="bulkbar" class="bulkbar hidden"></div>
+      <div class="list" id="mods"></div>
+      <div class="hint" id="orderHint">Mods higher up win when two change the same thing. Drag to reorder.</div>
+    </div>
+
+    <div class="card">
+      <div class="head"><h2>Add a mod from a file or link</h2></div>
+      <div class="drop" id="drop" tabindex="0"><span id="dropIcon"></span><span>Drop .zip, .rar, .7z or .vpk files here, or click to choose</span>
+        <input type="file" id="file" accept=".zip,.rar,.7z,.vpk" multiple hidden>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <input type="text" id="gbUrl" placeholder="Paste a GameBanana link">
+        <button class="outline" id="gbLook">Open</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-browse" class="hidden">
+    <div class="toolbar">
+      <span class="seg" id="bModel"><button data-model="Frogtech" class="on">Frogtech</button><button data-model="Mod">Mods</button><button data-model="Sound">Sounds</button></span>
+      <label class="search gbonly"><span id="searchIcon"></span><input type="search" id="bSearch" placeholder="Search Deadlock mods"></label>
+      <select id="bSort" class="gbonly" title="Sort" aria-label="Sort">
+        <option value="liked">Most liked</option>
+        <option value="downloaded">Most downloaded</option>
+        <option value="viewed">Most viewed</option>
+        <option value="newest">Newest</option>
+        <option value="updated">Recently updated</option>
+      </select>
+      <select id="bCat" class="gbonly" title="Category" aria-label="Category"><option value="0">All categories</option></select>
+    </div>
+    <div class="hint hidden" id="bNote" style="margin:-4px 0 12px">Search looks in every category.</div>
+    <div class="grid" id="bGrid"></div>
+    <div id="sentinel"></div>
+  </div>
+
+  <div id="tab-settings" class="hidden">
+    <div class="card" id="updatesCard">
+      <div class="head"><h2>Updates</h2></div>
+      <div class="setting">
+        <div class="main"><div>Frogtech Mod Loader <span class="brass" id="updVer"></span></div><div class="h" id="updStatus"></div></div>
+        <span id="updActions" class="row"></span>
+      </div>
+      <div class="setting"><div class="main">Update mods and the loader automatically<div class="h">Checks every hour and only installs while Deadlock is closed.</div></div>
+        <label class="switch"><input type="checkbox" data-setting="autoUpdate" aria-label="Update automatically"><span></span></label></div>
+      <ul id="updNotes" class="ash hidden" style="margin:4px 0 0;padding-left:20px;font-size:14px"></ul>
+    </div>
+    <div class="card" id="reposCard">
+      <div class="head"><h2>Repositories</h2><span class="grow"></span><button class="outline sm" id="addRepoBtn">Add repository</button></div>
+      <div class="list" id="repoList"></div>
+      <div class="hint">Only add repositories from people you trust: their mods run in your game.</div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Game</h2></div>
+      <div id="gameStatus" class="row" style="margin-bottom:12px"></div>
+      <div class="ash" style="font-size:14px;margin-bottom:6px">Game folder</div>
+      <div class="row">
+        <input type="text" id="gameDir" placeholder="C:\Program Files (x86)\Steam\steamapps\common\Deadlock">
+        <button class="outline" id="saveDir">Use this folder</button>
+        <button class="ghost" id="autoDir">Find it for me</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Preferences</h2></div>
+      <div>
+        <div class="setting"><div class="main">Start with Windows<div class="h">Stays in the tray, also after you close this window, so your mods survive game updates.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="startWithWindows" aria-label="Start with Windows"><span></span></label></div>
+        <div class="setting"><div class="main">Turn mods back on after game updates<div class="h">Game updates switch mods off; the loader switches them back on.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="keepGameinfo" aria-label="Turn mods back on after game updates"><span></span></label></div>
+        <div class="setting"><div class="main">Show mature content<div class="h">GameBanana mods marked as mature are blurred unless this is on.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="showMature" aria-label="Show mature content"><span></span></label></div>
+        <div class="setting"><div class="main">Questions<div class="h" id="dontAskHint"></div></div>
+          <button class="outline sm" id="resetAsk">Ask me again</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <details class="adv">
+        <summary><span id="advIcon"></span><h2>Advanced</h2></summary>
+        <div class="kv" id="gamekv"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="outline sm" id="openAddons">Open the mods folder</button>
+          <button class="outline sm" id="openData">Open the loader's data folder</button>
+          <span class="grow"></span>
+          <button class="danger sm" id="quitBtn">Quit the loader</button>
+        </div>
+        <div class="ash" style="font-size:14px;margin-top:16px">Activity</div>
+        <div id="log"></div>
+      </details>
+    </div>
+    <div class="appname" id="appName">Frogtech Mod Loader</div>
+  </div>
+</main>
+</div>
+</div>
+<div class="edge n" data-ht="12"></div><div class="edge s" data-ht="15"></div><div class="edge w" data-ht="10"></div><div class="edge e" data-ht="11"></div>
+<div class="edge nw" data-ht="13"></div><div class="edge ne" data-ht="14"></div><div class="edge sw" data-ht="16"></div><div class="edge se" data-ht="17"></div>
+<div id="toasts"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let S = null, dragging = false, dirTouched = false, tab = "mods", catalogRequested = false;
+const selected = new Set();
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false && kid !== "") el.append(kid.nodeType ? kid : String(kid));
+  return el;
+}
+
+// ---- icons (inline SVG, lucide shapes) ----
+const ICONS = {
+  heart: ["p:M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"],
+  eye: ["p:M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z", "c:12,12,3"],
+  download: ["p:M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "p:m7 10 5 5 5-5", "p:M12 15V3"],
+  check: ["p:M20 6 9 17l-5-5"],
+  x: ["p:M18 6 6 18", "p:m6 6 12 12"],
+  more: ["c:5,12,1", "c:12,12,1", "c:19,12,1"],
+  grip: ["c:9,6,1", "c:9,12,1", "c:9,18,1", "c:15,6,1", "c:15,12,1", "c:15,18,1"],
+  music: ["p:M9 18V5l12-2v13", "c:6,18,3", "c:18,16,3"],
+  left: ["p:m15 18-6-6 6-6"], right: ["p:m9 18 6-6-6-6"],
+  ext: ["p:M15 3h6v6", "p:M10 14 21 3", "p:M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"],
+  box: ["p:M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z", "p:M3.3 7 12 12l8.7-5", "p:M12 22V12"],
+  alert: ["p:M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "p:M12 9v4", "p:M12 17h.01"],
+  info: ["c:12,12,10", "p:M12 16v-4", "p:M12 8h.01"],
+  play: ["f:M7 4v16l13-8z"],
+  search: ["c:11,11,7", "p:m21 21-4.3-4.3"],
+  upload: ["p:M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "p:m17 8-5-5-5 5", "p:M12 3v12"],
+  chev: ["p:m9 18 6-6-6-6"],
+  wmin: ["p:M5 12h14"], wmax: ["p:M5 5h14v14H5z"], wrestore: ["p:M8 8h11v11H8z", "p:M5 16V5h11"], wclose: ["p:M6 6l12 12", "p:M18 6 6 18"],
+};
+function icon(name, cls) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("class", "i" + (cls ? " " + cls : "")); svg.setAttribute("aria-hidden", "true");
+  for (const part of ICONS[name] || []) {
+    const [kind, d] = [part[0], part.slice(2)];
+    let el;
+    if (kind === "c") { const [cx, cy, r] = d.split(","); el = document.createElementNS(NS, "circle"); el.setAttribute("cx", cx); el.setAttribute("cy", cy); el.setAttribute("r", r); if (r === "1") el.setAttribute("fill", "currentColor"); }
+    else { el = document.createElementNS(NS, "path"); el.setAttribute("d", d); if (kind === "f") { el.setAttribute("fill", "currentColor"); el.setAttribute("stroke", "none"); } }
+    svg.append(el);
+  }
+  return svg;
+}
+
+// ---- tags: one colour per kind of mod (same as the site) ----
+const TAG_KIND = { HUD: "hud", Editor: "hud", Layouts: "hud", Theme: "theme", "Add-on": "theme", Video: "video", Settings: "video",
+  Social: "social", Steam: "social", Menus: "menus", "New players": "menus", Accessibility: "access", Tool: "tool", "Auto-update": "tool", Retired: "retired" };
+// chip(label, kind, target): with a target it's a button that opens Browse on similar mods.
+// target: { frog: tag } for our tags, or { model, name, root } for a GameBanana category.
+function chip(label, kind, target) {
+  const c = target ? h("button", { class: "chip", type: "button", title: similarTitle(label, target) }, label) : h("span", { class: "chip" }, label);
+  c.style.setProperty("--c", `var(--tag-${kind || TAG_KIND[label] || "retired"})`);
+  if (target) c.addEventListener("click", (e) => { e.stopPropagation(); findSimilar(target); });
+  return c;
+}
+const frogChip = (t) => chip(t, null, { frog: t });
+// Our tags mapped to the closest GameBanana category (model, category name); others filter our own list.
+const FROG_TO_GB = {
+  HUD: ["Mod", "HUD"], Editor: ["Mod", "HUD"], Layouts: ["Mod", "HUD"],
+  Theme: ["Mod", "Skins"], "Add-on": ["Mod", "Skins"],
+  Social: ["Sound", null], Steam: ["Sound", null],
+  Menus: ["Mod", "Quality of Life/Fixes"], "New players": ["Mod", "Quality of Life/Fixes"],
+  Video: ["Mod", "Quality of Life/Fixes"], Settings: ["Mod", "Quality of Life/Fixes"],
+  Tool: ["Mod", "Quality of Life/Fixes"], "Auto-update": ["Mod", "Quality of Life/Fixes"],
+};
+function similarTitle(label, target) {
+  if (target.frog && !FROG_TO_GB[target.frog]) return "Show our " + label + " mods";
+  const model = target.frog ? FROG_TO_GB[target.frog][0] : target.model;
+  return "Find more " + label + (model === "Sound" ? " sounds" : " mods");
+}
+// GameBanana categories mapped onto the same colours.
+function gbKind(model, category) {
+  if (model === "Sound") return "social";
+  let root = String(category || "").split(" / ")[0];
+  for (const c of B.cats[model || "Mod"] || []) if ((c.children || []).some((k) => k.name === root)) root = c.name;
+  if (root === "HUD") return "hud";
+  if (root === "Skins" || root === "Model Replacement") return "theme";
+  if (root === "Gameplay Modifications" || root === "Quality of Life/Fixes") return "tool";
+  return "retired";
+}
+
+// ---- toasts ----
+function toast(msg, kind, action) {
+  kind = kind === true ? "error" : kind || "ok";
+  const t = h("div", { class: "toast " + kind, role: "status" }, icon({ ok: "check", error: "alert", info: "info" }[kind] || "info"), h("div", { class: "grow" }, msg,
+    action ? h("div", { style: "margin-top:8px" }, h("button", { class: "primary sm", onclick: (e) => { e.stopPropagation(); t.remove(); action.run(); } }, action.label)) : null));
+  const remove = () => t.remove();
+  t.addEventListener("click", remove);
+  $("toasts").append(t);
+  while ($("toasts").children.length > 4) $("toasts").firstChild.remove();
+  setTimeout(remove, action ? 15000 : kind === "error" ? 9000 : kind === "info" ? 3500 : 5000);
+}
+
+// ---- modals and the lightbox ----
+const modalStack = [];
+function openModal(box, onClose, cls) {
+  const modal = h("div", { class: cls || "modal" }, box);
+  const entry = {
+    modal,
+    close: () => {
+      if (!modal.isConnected) return;
+      modal.remove(); modalStack.splice(modalStack.indexOf(entry), 1); if (onClose) onClose();
+    },
+  };
+  modal.addEventListener("mousedown", (e) => { if (e.target === modal) entry.close(); });
+  modalStack.push(entry);
+  document.body.append(modal);
+  return entry;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (openMenuEl) { closeMenu(); return; }
+  const top = modalStack[modalStack.length - 1];
+  if (top) { e.preventDefault(); top.close(); }
+});
+const xButton = (onclick) => h("button", { class: "ghost icon x", onclick, "aria-label": "Close" }, icon("x"));
+
+// ask() resolves true/false. With a key, "Don't ask again" is offered (saved in settings).
+function ask({ key, title, body, ok = "OK", danger = false, cancel = "Cancel", dontLabel = "Don't ask again", onDont = null }) {
+  if (key && S && S.settings.dontAsk && S.settings.dontAsk[key]) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let done = false, entry = null;
+    const dont = key ? h("input", { type: "checkbox" }) : null;
+    const okBtn = h("button", { class: danger ? "danger solid" : "primary" }, ok);
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      if (entry) entry.close();
+      if (v && dont && dont.checked) {
+        if (onDont) onDont();
+        S.settings.dontAsk = Object.assign({}, S.settings.dontAsk, { [key]: true });
+        quiet(api("settings/dontask", { id: key, enabled: true }));
+      }
+      resolve(v);
+    };
+    const box = h("div", { class: "box small", role: "dialog", "aria-modal": "true" },
+      h("h3", {}, title), h("div", { class: "body" }, body),
+      h("div", { class: "actions" }, dont ? h("label", { class: "dont" }, dont, dontLabel) : null, h("span", { class: "grow" }),
+        h("button", { class: "ghost", onclick: () => finish(false) }, cancel), okBtn));
+    okBtn.addEventListener("click", () => finish(true));
+    box.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "BUTTON") { e.preventDefault(); finish(true); } });
+    entry = openModal(box, () => finish(false));
+    okBtn.focus();
+  });
+}
+
+// In-app image viewer: arrows / ← → to move, Esc or a click outside to close.
+function lightbox(urls, start) {
+  let i = start || 0;
+  const img = h("img", { alt: "" });
+  const count = h("div", { class: "count" });
+  const show = () => { img.src = urls[i]; count.textContent = urls.length > 1 ? (i + 1) + " / " + urls.length : ""; };
+  const step = (d) => { i = (i + d + urls.length) % urls.length; show(); };
+  const wrap = h("div", { style: "display:contents" }, img, count);
+  const entry = openModal(wrap, () => document.removeEventListener("keydown", keys), "lightbox");
+  const keys = (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); };
+  document.addEventListener("keydown", keys);
+  if (urls.length > 1) entry.modal.append(
+    h("button", { class: "nav prev", "aria-label": "Previous", onclick: () => step(-1) }, icon("left")),
+    h("button", { class: "nav next", "aria-label": "Next", onclick: () => step(1) }, icon("right")));
+  entry.modal.append(xButton(entry.close));
+  img.addEventListener("click", () => urls.length > 1 && step(1));
+  show();
+}
+
+// ---- dropdown menus ----
+let openMenuEl = null;
+function closeMenu() { if (openMenuEl) { openMenuEl.remove(); openMenuEl = null; } }
+function showMenu(anchor, items) {
+  closeMenu();
+  const m = h("div", { class: "menu", role: "menu" }, items.filter(Boolean).map((it) => it === "-" ? h("hr") :
+    h("button", { role: "menuitem", class: it.danger ? "red" : "", disabled: it.disabled, onclick: () => { closeMenu(); it.run(); } }, it.label)));
+  document.body.append(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8)) + "px";
+  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + "px";
+  m.addEventListener("keydown", (e) => {
+    const btns = [...m.querySelectorAll("button:not(:disabled)")], k = btns.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); (btns[k + 1] || btns[0]).focus(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); (btns[k - 1] || btns[btns.length - 1]).focus(); }
+  });
+  openMenuEl = m;
+  const first = m.querySelector("button:not(:disabled)"); if (first) first.focus();
+}
+document.addEventListener("mousedown", (e) => { if (openMenuEl && !openMenuEl.contains(e.target)) closeMenu(); });
+window.addEventListener("blur", closeMenu);
+window.addEventListener("scroll", closeMenu, true);
+
+// ---- API ----
+async function api(path, body) {
+  const res = await fetch("/api/" + path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: body instanceof FormData || body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
+    credentials: "same-origin",
+  });
+  if (res.status === 401) { $("gate").classList.remove("hidden"); throw new Error("not connected"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    const e = new Error(data.error || res.statusText); e.data = data; e.status = res.status; throw e;
+  }
+  return data;
+}
+async function act(path, body, okMsg) {
+  try {
+    const r = await api(path, body);
+    if (okMsg) toast(typeof okMsg === "function" ? okMsg(r) : okMsg, "ok");
+    return r;
+  } catch (e) {
+    if (e.message !== "not connected") toast(e.message, "error");
+    throw e;
+  } finally { refresh(); }
+}
+const quiet = (p) => p.catch(() => {});
+
+// Links never navigate the window: web links open in the default browser.
+function openExternal(url) { quiet(api("open-external", { url })); }
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[href]");
+  if (!a) return;
+  const href = a.getAttribute("href");
+  if (href === "#") { e.preventDefault(); return; }
+  if (/^https?:/i.test(href)) { e.preventDefault(); openExternal(href); }
+});
+window.open = (url) => { if (/^https?:/i.test(String(url))) openExternal(String(url)); return null; };
+
+function fmtSize(n) { return n > 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+function fmtNum(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n || 0); }
+function fmtDate(ts) { return ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""; }
+const gbImg = (u) => (typeof u === "string" && u.startsWith("https://images.gamebanana.com/") ? u : null);
+const cached = (u) => (typeof u === "string" && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(u) ? "/img?u=" + encodeURIComponent(u) : null);
+const plural = (n, one, many) => n + " " + (n === 1 ? one : many || one + "s");
+
+// A mod's picture, or a placeholder (initial on a tinted tile; a box for your own files).
+function rowThumb(name, image, own) {
+  const box = h("div", { class: "thumbs" });
+  const ph = () => {
+    if (own) return h("div", { class: "ph" }, icon("box"));
+    let hash = 0; for (const c of name || "?") hash = (hash * 31 + c.charCodeAt(0)) | 0;
+    return h("div", { class: "ph", style: `background:hsl(${Math.abs(hash) % 360} 12% 22%)` }, (name || "?").trim().charAt(0).toUpperCase());
+  };
+  const src = typeof image === "string" && image.startsWith("/") ? image : cached(image);
+  if (src) {
+    const img = h("img", { src, alt: "", loading: "lazy" });
+    img.addEventListener("error", () => img.replaceWith(ph()));
+    box.append(img);
+  } else box.append(ph());
+  return box;
+}
+
+// ---- tabs ----
+function setTab(t) {
+  tab = t;
+  for (const b of document.querySelectorAll("nav.tabs button")) b.classList.toggle("on", b.dataset.tab === t);
+  for (const id of ["mods", "browse", "settings"]) $("tab-" + id).classList.toggle("hidden", id !== t);
+  $("banners").classList.toggle("browse", t === "browse"); // the grid gets the room; only problems show there
+  if (t === "browse") browseInit();
+  $("scroller").scrollTop = 0;
+}
+for (const b of document.querySelectorAll("nav.tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+
+// ---- status ----
+function banner(kind, title, desc, ...btns) {
+  $("banners").append(h("div", { class: "banner " + kind }, icon(kind === "info" ? "info" : "alert"),
+    h("div", { class: "grow" }, h("div", { class: "t" }, title), desc ? h("div", { class: "d" }, desc) : null),
+    btns.length ? h("div", { class: "acts" }, ...btns) : null));
+}
+
+function render() {
+  if (!S) return;
+  $("gate").classList.add("hidden");
+  $("busy").replaceChildren(); $("busy").classList.toggle("hidden", !S.busy);
+  if (S.busy) $("busy").append(h("span", { class: "spin" }), S.busy);
+  $("modCount").textContent = S.mods.length ? String(S.mods.length) : "";
+
+  $("banners").replaceChildren();
+  if (!S.gameFound) banner("bad", "Couldn't find Deadlock", "Choose the game folder in Settings.", h("button", { class: "outline sm", onclick: () => setTab("settings") }, "Open Settings"));
+  if (S.gameRunning) banner("info", "Deadlock is running", "Changes go into the game when you close it.");
+  const n = S.unknownPaks.length;
+  if (n) banner("warn", "Found " + plural(n, "mod file") + " the loader didn't install", "Import " + (n === 1 ? "it" : "them") + " so you can manage " + (n === 1 ? "it" : "them") + " here, or delete " + (n === 1 ? "it" : "them") + ".",
+    h("button", { class: "primary sm", onclick: importForeign }, "Import"),
+    h("button", { class: "danger sm", onclick: deleteForeign }, "Delete"));
+  if (S.dmm) banner("warn", "Deadlock Mod Manager is managing mods too", "Use one mod manager at a time, or they'll overwrite each other's files.");
+  else if (S.dmmLeftover) banner("info", "Deadlock Mod Manager left a file behind", "It isn't used any more and can go.",
+    h("button", { class: "outline sm", onclick: () => quiet(act("dmm/remove-leftover", {}, "Removed the leftover file")) }, "Remove it"));
+  if (S.pendingApply && !S.gameRunning && !n && (S.mods.length || S.appliedOnce))
+    banner("info", "Some changes aren't in the game yet", null, h("button", { class: "primary sm", onclick: () => quiet(act("apply", {}, "Changes applied")) }, "Apply now"));
+  if (S.loaderUpdate) banner("info", "Frogtech Mod Loader " + S.loaderUpdate + " is ready", "You have " + S.version + ". It restarts after updating.",
+    h("button", { class: "primary sm", onclick: updateLoader }, "Update now"));
+  const modUps = S.mods.filter((m) => m.update);
+  if (modUps.length) banner("info", plural(modUps.length, "mod update") + " ready", modUps.map((m) => m.update).join(", "),
+    h("button", { class: "primary sm", onclick: updateAll }, "Update all"));
+  $("setDot").classList.toggle("hidden", !S.loaderUpdate);
+  renderUpdates();
+  if (S.lastErr) banner("bad", "Something went wrong", S.lastErr);
+
+  // Settings: the plain status up top, details under Advanced.
+  const st = $("gameStatus"); st.replaceChildren();
+  if (!S.gameFound) st.append(h("span", { style: "color:var(--bad)" }, "Deadlock wasn't found. Choose its folder below."));
+  else if (S.gameinfoOk) st.append(h("span", { class: "badge-ok" }, icon("check"), "Mods are switched on in Deadlock"), S.game.clientVersion ? h("span", { class: "ash" }, "· game version ", h("span", { class: "brass" }, S.game.clientVersion)) : null);
+  else st.append(h("span", { style: "color:var(--brass)" }, "Mods are switched off in Deadlock"), h("button", { class: "primary sm", onclick: () => quiet(act("fix-gameinfo", {}, "Mods switched on")) }, "Switch on"));
+  const kv = $("gamekv"); kv.replaceChildren();
+  const add = (k, v) => kv.append(h("span", {}, k), h("span", {}, v));
+  const nameVer = "Frogtech Mod Loader " + S.version.replace(/-dev$/, " (dev)");
+  $("appName").textContent = nameVer;
+  $("brand").title = nameVer;
+  add("Loader", S.version + (S.lastCheck && !S.lastCheck.startsWith("0001") ? " · checked for updates at " + new Date(S.lastCheck).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""));
+  add("Game folder", h("span", { class: "path" }, S.game.dir || "not set"));
+  if (S.gameFound) {
+    add("Game version", (S.game.clientVersion || "?") + " · Steam build " + (S.game.buildId || "?"));
+    add("gameinfo.gi", S.gameinfoOk ? "has the citadel/addons search path" : (S.gameinfoErr || "citadel/addons search path missing"));
+    add("Mods folder", h("span", { class: "path" }, S.addonsDir));
+  }
+  add("Data folder", h("span", { class: "path" }, S.dataDir));
+  if (!dirTouched && document.activeElement !== $("gameDir")) $("gameDir").value = S.game.dir || "";
+  for (const el of document.querySelectorAll("[data-setting]")) el.checked = !!S.settings[el.dataset.setting];
+  const nAsk = Object.keys(S.settings.dontAsk || {}).length;
+  $("dontAskHint").textContent = nAsk ? "You told the loader not to ask " + plural(nAsk, "question") + " again." : "The loader asks before it removes or deletes anything.";
+  $("resetAsk").disabled = !nAsk;
+  $("applyBtn").disabled = S.gameRunning || !S.gameFound;
+  $("selectAll").classList.toggle("hidden", !S.mods.length);
+  $("selectAll").textContent = S.mods.length && selected.size === S.mods.length ? "Select none" : "Select all";
+  if (!dragging) renderMods();
+  renderSources();
+  renderFrogtech();
+  renderRepos();
+  const lg = $("log"), atBottom = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 4;
+  lg.textContent = S.log.join("\n");
+  if (atBottom) lg.scrollTop = lg.scrollHeight;
+}
+
+function sourceLabel(m) {
+  if (m.source === "catalog") return "Frogtech";
+  if (m.source === "repo") { const r = repoOf(m.repo); return r ? r.name : "Repository"; }
+  if (m.source === "gamebanana") return m.gbModel === "Sound" ? "GameBanana sound" : "GameBanana";
+  return m.id.startsWith("local-imported-") ? "Imported" : "Your file";
+}
+function modChips(m) {
+  if (m.source === "catalog") { const c = S.catalog.find((x) => x.id === m.id); return ((c && c.tags) || []).map(frogChip); }
+  if (m.source === "repo") { const r = repoOf(m.repo), c = r && r.mods.find((x) => x.id === m.repoMod); return ((c && c.tags) || []).map(frogChip); }
+  if (m.source === "gamebanana" && m.category) { const model = m.gbModel === "Sound" ? "Sound" : "Mod"; return [chip(m.category, gbKind(model, m.category), { model, name: m.category })]; }
+  return [];
+}
+
+// ---- your mods ----
+function renderMods() {
+  const L = $("mods"); L.replaceChildren();
+  for (const id of [...selected]) if (!S.mods.some((m) => m.id === id)) selected.delete(id);
+  renderBulkbar();
+  $("orderHint").classList.toggle("hidden", S.mods.length < 2);
+  if (!S.mods.length) {
+    L.append(h("div", { class: "empty" }, h("h3", {}, "No mods yet"),
+      "Find mods in Browse, ours or from GameBanana, or add a file below.",
+      h("div", { class: "row" }, h("button", { class: "primary", onclick: () => setTab("browse") }, icon("search"), "Find mods in Browse"))));
+    return;
+  }
+  const ids = S.mods.map((m) => m.id);
+  const reorder = (a) => quiet(act("mods/order", { ids: a }));
+  S.mods.forEach((m, i) => {
+    const moveTo = (j) => { const a = ids.filter((x) => x !== m.id); a.splice(j, 0, m.id); reorder(a); };
+    const menuBtn = h("button", { class: "ghost icon", title: "More", "aria-label": "More for " + m.name }, icon("more"));
+    menuBtn.addEventListener("click", () => showMenu(menuBtn, [
+      m.update && { label: "Update to " + m.update, run: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) },
+      m.gbId && { label: "Details", run: () => openDetails(m.gbModel || "Mod", m.gbId) },
+      m.page && { label: "Open its web page", run: () => openExternal(m.page) },
+      { label: "Move to the top", disabled: i === 0, run: () => moveTo(0) },
+      { label: "Move up", disabled: i === 0, run: () => moveTo(i - 1) },
+      { label: "Move down", disabled: i === S.mods.length - 1, run: () => moveTo(i + 1) },
+      { label: "Move to the bottom", disabled: i === S.mods.length - 1, run: () => moveTo(S.mods.length - 1) },
+      "-",
+      { label: "Remove", danger: true, run: () => removeMods([m.id]) },
+    ]));
+    const cb = h("input", { type: "checkbox", checked: selected.has(m.id), "aria-label": "Select " + m.name });
+    const chips = modChips(m);
+    const row = h("div", { class: "mrow" + (m.enabled ? "" : " off") + (selected.has(m.id) ? " sel" : ""), draggable: "true" },
+      cb,
+      h("span", { class: "grip", title: "Drag to reorder" }, icon("grip")),
+      rowThumb(m.name, m.image, m.source === "local"),
+      h("div", { class: "info" },
+        h("div", { class: "name", title: m.name }, m.name),
+        h("div", { class: "meta" }, h("span", {}, sourceLabel(m)),
+          m.version ? h("span", { class: "brass" }, "v" + m.version) : null,
+          ...chips,
+          m.gbPinned ? h("span", { class: "chip plain", title: "You picked an older file, so it doesn't update" }, "Kept on this file") : null,
+          m.update ? h("span", { style: "color:var(--primary)" }, "Update available") : null,
+          (m.conflicts || []).length ? h("span", { style: "color:var(--brass)" }, "Doesn't work with " + m.conflicts.join(", ")) : null)),
+      h("div", { class: "side" },
+        m.update ? h("button", { class: "primary sm", onclick: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) }, "Update") : null,
+        h("label", { class: "switch", title: m.enabled ? "On" : "Off" },
+          h("input", { type: "checkbox", checked: m.enabled, "aria-label": "Turn " + m.name + " on or off", onchange: (e) => quiet(act("mods/enable", { id: m.id, enabled: e.target.checked })) }), h("span")),
+        menuBtn));
+    cb.addEventListener("change", () => { cb.checked ? selected.add(m.id) : selected.delete(m.id); row.classList.toggle("sel", cb.checked); renderBulkbar(); });
+    row.addEventListener("dragstart", (e) => { dragging = true; row.classList.add("dragging"); e.dataTransfer.setData("text/x-mod", m.id); e.dataTransfer.effectAllowed = "move"; });
+    row.addEventListener("dragend", () => { dragging = false; row.classList.remove("dragging"); renderMods(); });
+    row.addEventListener("dragover", (e) => { if (e.dataTransfer.types.includes("text/x-mod")) { e.preventDefault(); row.classList.add("dropbefore"); } });
+    row.addEventListener("dragleave", () => row.classList.remove("dropbefore"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault(); e.stopPropagation(); row.classList.remove("dropbefore");
+      const id = e.dataTransfer.getData("text/x-mod"); if (!id || id === m.id) return;
+      const a = ids.filter((x) => x !== id); a.splice(a.indexOf(m.id), 0, id);
+      dragging = false; reorder(a);
+    });
+    L.append(row);
+  });
+  const tail = h("div", { style: "height:6px" });
+  tail.addEventListener("dragover", (e) => { if (e.dataTransfer.types.includes("text/x-mod")) e.preventDefault(); });
+  tail.addEventListener("drop", (e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/x-mod"); dragging = false; reorder(ids.filter((x) => x !== id).concat(id)); });
+  L.append(tail);
+}
+
+function renderBulkbar() {
+  const bar = $("bulkbar");
+  bar.classList.toggle("hidden", !selected.size);
+  if (!selected.size) return;
+  const ids = [...selected];
+  const bulk = (action, msg) => quiet(act("mods/bulk", { ids, action }, (r) => plural(r.count, "mod") + " " + msg));
+  bar.replaceChildren(h("span", { style: "font-weight:600" }, selected.size + " selected"), h("span", { class: "grow" }),
+    h("button", { class: "outline sm", onclick: () => bulk("enable", "turned on") }, "Turn on"),
+    h("button", { class: "outline sm", onclick: () => bulk("disable", "turned off") }, "Turn off"),
+    h("button", { class: "danger sm", onclick: () => removeMods(ids) }, "Remove"),
+    h("button", { class: "ghost sm", onclick: () => { selected.clear(); render(); } }, "Clear"));
+}
+
+async function removeMods(ids) {
+  if (!ids.length) return;
+  const names = ids.map((id) => (S.mods.find((m) => m.id === id) || {}).name || id);
+  const one = ids.length === 1;
+  const okd = await ask({ key: one ? "remove" : "removeSelected", danger: true, ok: "Remove",
+    title: one ? "Remove " + names[0] + "?" : "Remove " + ids.length + " mods?",
+    body: one ? "It's taken out of the game and deleted from the loader."
+      : h("div", {}, "These are taken out of the game and deleted from the loader:", h("ul", {}, names.slice(0, 10).map((x) => h("li", {}, x))),
+        names.length > 10 ? "…and " + (names.length - 10) + " more." : null) });
+  if (!okd) return;
+  ids.forEach((id) => selected.delete(id));
+  quiet(act("mods/bulk", { ids, action: "remove" }, (r) => (one ? names[0] : plural(r.count, "mod")) + " removed"));
+}
+
+async function importForeign() {
+  const n = S.unknownPaks.length;
+  if (await ask({ key: "import", title: "Import " + plural(n, "mod file") + "?", ok: "Import",
+    body: "The loader takes " + (n === 1 ? "it" : "them") + " over, so you can turn " + (n === 1 ? "it" : "them") + " on and off, reorder and remove " + (n === 1 ? "it" : "them") + " here." }))
+    quiet(act("import", {}, plural(n, "mod file") + " imported"));
+}
+async function deleteForeign() {
+  const n = S.unknownPaks.length;
+  if (await ask({ key: "deleteForeign", danger: true, ok: "Delete", title: "Delete " + plural(n, "mod file") + "?",
+    body: h("div", {}, "These files are deleted from Deadlock's mods folder:", h("div", { class: "path", style: "margin-top:6px" }, S.unknownPaks.join(", "))) }))
+    quiet(act("foreign/delete", {}, (r) => plural(r.count, "file") + " deleted"));
+}
+
+$("listMenu").append(icon("more"));
+$("listMenu").addEventListener("click", () => {
+  const imported = S.mods.filter((m) => m.id.startsWith("local-imported-")).map((m) => m.id);
+  const local = S.mods.filter((m) => m.source === "local").map((m) => m.id);
+  const off = S.mods.filter((m) => !m.enabled).map((m) => m.id);
+  showMenu($("listMenu"), [
+    { label: "Turn all on", disabled: !off.length, run: () => quiet(act("mods/bulk", { ids: off, action: "enable" }, "All mods on")) },
+    { label: "Turn all off", disabled: !S.mods.some((m) => m.enabled), run: () => quiet(act("mods/bulk", { ids: S.mods.map((m) => m.id), action: "disable" }, "All mods off")) },
+    "-",
+    { label: "Remove imported mods (" + imported.length + ")", danger: true, disabled: !imported.length, run: () => removeMods(imported) },
+    { label: "Remove your own files (" + local.length + ")", danger: true, disabled: !local.length, run: () => removeMods(local) },
+    { label: "Delete files the loader didn't install (" + S.unknownPaks.length + ")", danger: true, disabled: !S.unknownPaks.length, run: deleteForeign },
+    "-",
+    { label: "Open the mods folder", run: () => quiet(act("open-folder", {})) },
+  ]);
+});
+$("selectAll").addEventListener("click", () => {
+  if (selected.size === S.mods.length) selected.clear(); else S.mods.forEach((m) => selected.add(m.id));
+  render();
+});
+
+// ---- repository sources (Browse > Frogtech, Browse > <repository>) ----
+// B.model is "Frogtech" (the built-in repository), "repo:<id>", "Mod" or "Sound".
+const isRepoSource = (m) => m === "Frogtech" || String(m).startsWith("repo:");
+function currentRepo() {
+  if (!S) return null;
+  if (B.model === "Frogtech") return S.repos.find((r) => r.builtin) || null;
+  return S.repos.find((r) => "repo:" + r.id === B.model) || null;
+}
+const repoOf = (id) => (S && S.repos.find((r) => r.id === id)) || null;
+let frogKey = "";
+function renderFrogtech(force) {
+  if (tab !== "browse" || !isRepoSource(B.model) || !S) return;
+  const src = currentRepo();
+  const key = JSON.stringify([B.model, B.ftag, src, S.mods.map((m) => [m.id, m.enabled, m.version])]);
+  if (key === frogKey && !force) return;
+  frogKey = key;
+  const G = $("bGrid");
+  $("sentinel").replaceChildren();
+  if (!src) { G.replaceChildren(); return; }
+  if (!src.mods.length) {
+    const msg = { key: ["Key not accepted", "Check the key for this repository in Settings > Repositories."],
+      unreachable: [src.builtin ? "Couldn't load our mods" : "Couldn't reach " + src.name, src.error || "Check your internet connection. Your installed mods keep working."],
+      invalid: ["This repository's file has a problem", src.error || ""] }[src.status];
+    if (msg) G.replaceChildren(h("div", { class: "empty", style: "grid-column:1/-1" }, h("h3", {}, msg[0]), msg[1],
+      h("div", { class: "row" }, h("button", { class: "outline", onclick: () => quiet(act("repos/refresh", {}, "Refreshed")) }, "Try again"),
+        src.builtin ? null : h("button", { class: "ghost", onclick: () => { setTab("settings"); $("reposCard").scrollIntoView({ block: "start" }); } }, "Repository settings"))));
+    else if (src.status === "ok") G.replaceChildren(h("div", { class: "empty", style: "grid-column:1/-1" }, h("h3", {}, "No mods here yet"), src.name + " doesn't list any mods for you."));
+    else G.replaceChildren(...Array.from({ length: 4 }, () => h("div", { class: "tile skel" })));
+    return;
+  }
+  const list = B.ftag ? src.mods.filter((c) => (c.tags || []).includes(B.ftag)) : src.mods;
+  const bar = B.ftag ? h("div", { class: "row", style: "grid-column:1/-1" }, h("span", { class: "ash" }, "Mods tagged"), chip(B.ftag),
+    h("button", { class: "ghost sm", onclick: () => { B.ftag = null; renderFrogtech(true); } }, "Show all")) : null;
+  G.replaceChildren(...[bar, ...list.map((c) => fcard(c, src))].filter(Boolean));
+}
+function catalogAction(c, src, size) {
+  const m = S.mods.find((x) => x.id === c.fullId);
+  const cls = "primary" + (size ? " " + size : "");
+  if (!m) return [h("button", { class: cls, onclick: (e) => { e.stopPropagation(); installCatalog(e.currentTarget, c, src); } }, icon("download"), "Install")];
+  const toggle = h("label", { class: "switch", title: m.enabled ? "On" : "Off", onclick: (e) => e.stopPropagation() },
+    h("input", { type: "checkbox", checked: m.enabled, "aria-label": "Turn " + c.name + " on or off", onchange: (e) => quiet(act("mods/enable", { id: m.id, enabled: e.target.checked }, c.name + (e.target.checked ? " on" : " off"))) }), h("span"));
+  if (c.update) return [h("button", { class: cls, onclick: (e) => { e.stopPropagation(); installCatalog(e.currentTarget, c, src, true); } }, icon("download"), "Update"), toggle];
+  return [h("span", { class: "badge-ok" }, icon("check"), "Installed"), toggle];
+}
+function fcard(c, src) {
+  const thumb = h("div", { class: "thumb" });
+  const img = cached(c.image);
+  if (img) thumb.append(h("img", { src: img, alt: "", loading: "lazy" })); else thumb.append(rowThumb(c.name).firstChild);
+  const t = h("div", { class: "tile", title: c.name, tabindex: "0" }, thumb,
+    h("div", { class: "body" },
+      (c.tags || []).length ? h("div", { class: "chips" }, c.tags.map(frogChip)) : null,
+      h("div", { class: "nameline" }, h("h3", {}, c.name), h("span", { class: "brass", style: "font-size:13px" }, "v" + c.version)),
+      c.description ? h("div", { class: "line1", title: c.description }, c.description) : null,
+      src && !src.builtin ? h("div", { class: "line1", style: "font-size:12px" }, "from " + src.name) : null,
+      h("div", { class: "foot" }, ...catalogAction(c, src, "sm"), h("span", { class: "grow" }), h("button", { class: "ghost sm" }, "Details"))));
+  t.addEventListener("click", () => openCatalogDetails(c, src));
+  t.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === t) openCatalogDetails(c, src); });
+  return t;
+}
+function openCatalogDetails(c, src) {
+  src = src || S.repos[0];
+  const box = h("div", { class: "box wide det", role: "dialog", "aria-modal": "true" });
+  const entry = openModal(box);
+  const img = cached(c.image);
+  const hero = img ? h("img", { class: "hero", src: img, alt: "", title: "Click to enlarge" }) : null;
+  if (hero) hero.addEventListener("click", () => lightbox([img], 0));
+  const fresh = () => ((repoOf(src.id) || src).mods || []).find((x) => x.id === c.id) || c;
+  box.append(h("div", {}, xButton(entry.close),
+    (c.tags || []).length ? h("div", { class: "chips", style: "margin-bottom:8px" }, c.tags.map(frogChip)) : null,
+    h("h3", { style: "font-size:20px" }, c.name),
+    h("div", { class: "stats", style: "margin:6px 0 12px;font-size:14px" }, h("span", {}, src.builtin ? "by Frogtech" : "from " + src.name), h("span", { class: "brass" }, "v" + c.version),
+      c.installed && c.update ? h("span", {}, "you have v" + c.installed) : null, c.size ? h("span", {}, fmtSize(c.size)) : null),
+    hero,
+    h("h4", {}, "About"), h("div", { class: "text" }, c.description || ""),
+    (c.notes || []).length ? h("div", {}, h("h4", {}, "What's new in " + c.version), h("ul", { class: "ash", style: "margin:4px 0;padding-left:20px;font-size:14px" }, c.notes.map((n) => h("li", {}, n)))) : null,
+    c.gameMismatch ? h("div", { style: "color:var(--brass);font-size:14px;margin-top:6px" }, "Made for an older game version; it may need an update.") : null,
+    (c.conflicts || []).length ? h("div", { class: "ash", style: "font-size:14px;margin-top:6px" }, "Doesn't work together with " + c.conflicts.join(", ") + ".") : null,
+    h("div", { class: "row", style: "margin-top:16px" }, h("div", { class: "row" }, ...catalogAction(fresh(), src)), h("span", { class: "grow" }),
+      c.page ? h("button", { class: "ghost sm", onclick: () => openExternal(c.page) }, "Open its page", icon("ext")) : null)));
+}
+function installCatalog(btn, c, src, update) {
+  btn.disabled = true; btn.replaceChildren(h("span", { class: "spin" }), update ? "Updating" : "Installing");
+  const msg = c.name + " " + c.version + (update ? " updated" : " installed");
+  if (update) quiet(act("mods/update", { id: c.fullId }, msg));
+  else if (!src || src.builtin) quiet(act("catalog/install", { id: c.id }, msg));
+  else quiet(act("repo/install", { repo: src.id, id: c.id }, msg + " from " + src.name));
+}
+
+// ---- Settings > Repositories ----
+let reposKey = "";
+const REPO_STATUS = { ok: ["Working", "tool"], key: ["Key not accepted", "access"], unreachable: ["Can't reach it", "hud"], invalid: ["Invalid file", "access"] };
+function renderRepos() {
+  const key = JSON.stringify(S.repos.map((r) => [r.id, r.name, r.url, r.enabled, r.status, r.error, r.modCount, r.fetched, r.hasKey, r.keyLast4, r.icon]));
+  if (key === reposKey) return;
+  reposKey = key;
+  $("repoList").replaceChildren(...S.repos.map((r) => {
+    const [label, kind] = REPO_STATUS[r.status] || ["Not checked yet", "retired"];
+    const fetched = r.fetched && !r.fetched.startsWith("0001") ? "checked " + new Date(r.fetched).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+    const keyLine = r.builtin ? null : h("div", { class: "meta" }, r.hasKey
+      ? [h("span", {}, "Key •••• " + (r.keyLast4 || "")), h("button", { class: "ghost sm", onclick: () => keyDialog(r) }, "Change"),
+        h("button", { class: "ghost sm", onclick: () => quiet(act("repos/key", { id: r.id, key: "" }, "Key removed")) }, "Remove")]
+      : [h("span", {}, "No key"), h("button", { class: "ghost sm", onclick: () => keyDialog(r) }, "Add key")]);
+    return h("div", { class: "mrow repo" + (r.enabled ? "" : " off") },
+      rowThumb(r.name, r.builtin ? "/favicon.ico" : r.icon),
+      h("div", { class: "info" },
+        h("div", { class: "row", style: "gap:8px" }, h("span", { class: "name" }, r.name), r.builtin ? h("span", { class: "chip plain" }, "Built in") : null, chip(label, kind)),
+        h("div", { class: "path", title: r.url, style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, r.url),
+        h("div", { class: "meta" }, h("span", {}, plural(r.modCount, "mod")), fetched ? h("span", {}, fetched) : null),
+        r.error && r.status !== "ok" ? h("div", { class: "meta", style: "color:" + (r.status === "unreachable" ? "var(--brass)" : "var(--coral)") }, r.error) : null,
+        keyLine),
+      h("div", { class: "side" },
+        h("label", { class: "switch", title: r.enabled ? "On" : "Off" },
+          h("input", { type: "checkbox", checked: r.enabled, "aria-label": "Use " + r.name, onchange: (e) => quiet(act("repos/enable", { id: r.id, enabled: e.target.checked }, r.name + (e.target.checked ? " on" : " off"))) }), h("span")),
+        r.builtin ? null : h("button", { class: "ghost icon", title: "Remove " + r.name, "aria-label": "Remove " + r.name, onclick: () => removeRepo(r) }, icon("x"))));
+  }));
+}
+async function removeRepo(r) {
+  if (await ask({ key: "removeRepo", danger: true, ok: "Remove", title: "Remove " + r.name + "?",
+    body: "Mods you installed from it stay, but they won't get updates." })) quiet(act("repos/remove", { id: r.id }, r.name + " removed"));
+}
+function keyDialog(r) {
+  const input = h("input", { type: "password", autocomplete: "off", placeholder: "Paste the key", spellcheck: "false" });
+  const save = h("button", { class: "primary" }, "Save key");
+  const box = h("div", { class: "box small", role: "dialog", "aria-modal": "true" }, h("h3", {}, "Key for " + r.name),
+    h("div", { class: "body" }, "The key is stored encrypted for your Windows account and only sent to " + new URL(r.url).host + "."),
+    h("div", { class: "field" }, h("label", {}, "Key"), input),
+    h("div", { class: "actions" }, h("span", { class: "grow" }), h("button", { class: "ghost", onclick: () => entry.close() }, "Cancel"), save));
+  const entry = openModal(box);
+  const go = () => { if (!input.value.trim()) return; entry.close(); quiet(act("repos/key", { id: r.id, key: input.value }, "Key saved")); };
+  save.addEventListener("click", go);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  input.focus();
+}
+// Add a repository: address and optional key, a preview, then the user confirms.
+function addRepoDialog(prefill) {
+  const url = h("input", { type: "text", placeholder: "https://example.com/repository.json", spellcheck: "false", value: prefill || "" });
+  const key = h("input", { type: "password", autocomplete: "off", placeholder: "Only for paid or private repositories", spellcheck: "false" });
+  const preview = h("div", { class: "preview hidden" });
+  const check = h("button", { class: "outline" }, "Check");
+  const add = h("button", { class: "primary", disabled: true }, "Add repository");
+  let checked = null; // {url, key} that the preview is for
+  const box = h("div", { class: "box small", role: "dialog", "aria-modal": "true", style: "max-width:540px" }, h("h3", {}, "Add a repository"),
+    h("div", { class: "body" }, "Modders can publish their mods and updates as a repository."),
+    h("div", { class: "field" }, h("label", {}, "Repository address"), url),
+    h("div", { class: "field" }, h("label", {}, "Key (optional)"), key),
+    preview,
+    h("div", { class: "hint", style: "color:var(--brass)" }, "Only add repositories from people you trust: their mods run in your game."),
+    h("div", { class: "actions" }, h("span", { class: "grow" }), h("button", { class: "ghost", onclick: () => entry.close() }, "Cancel"), check, add));
+  const entry = openModal(box);
+  const changed = () => !checked || checked.url !== url.value.trim() || checked.key !== key.value;
+  const sync = () => { add.disabled = changed(); };
+  url.addEventListener("input", sync); key.addEventListener("input", sync);
+  async function doCheck() {
+    if (!url.value.trim()) { url.focus(); return; }
+    check.disabled = true; check.replaceChildren(h("span", { class: "spin" }), "Checking");
+    preview.classList.remove("hidden"); preview.replaceChildren(h("span", { class: "ash" }, "Looking at the repository…"));
+    try {
+      const p = await api("repos/preview", { url: url.value.trim(), key: key.value });
+      checked = { url: url.value.trim(), key: key.value };
+      preview.replaceChildren(h("div", {}, h("div", { class: "row", style: "gap:8px" }, h("b", {}, p.name), h("span", { class: "ash" }, plural(p.modCount, "mod"))),
+        p.description ? h("div", { class: "ash", style: "font-size:14px;margin-top:2px" }, p.description) : null,
+        p.homepage ? h("div", { style: "margin-top:6px" }, h("a", { href: p.homepage }, new URL(p.homepage).host + " ↗")) : null,
+        p.added ? h("div", { style: "color:var(--brass);font-size:14px;margin-top:6px" }, "You already added this repository.") : null));
+      add.disabled = !!p.added;
+      if (!p.added) add.focus();
+    } catch (e) {
+      checked = null; add.disabled = true;
+      preview.replaceChildren(h("span", { style: "color:var(--coral)" }, e.message === "not connected" ? "The loader isn't running." : e.message));
+    } finally { check.disabled = false; check.replaceChildren("Check"); }
+  }
+  async function doAdd() {
+    if (changed()) return doCheck();
+    add.disabled = true; add.replaceChildren(h("span", { class: "spin" }), "Adding");
+    try {
+      await act("repos/add", { url: checked.url, key: checked.key }, "Repository added. Its mods are in Browse.");
+      entry.close();
+    } catch { add.disabled = false; add.replaceChildren("Add repository"); }
+  }
+  check.addEventListener("click", doCheck);
+  add.addEventListener("click", doAdd);
+  for (const el of [url, key]) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); changed() ? doCheck() : doAdd(); } });
+  if (prefill) doCheck(); else url.focus();
+}
+$("addRepoBtn").addEventListener("click", () => addRepoDialog());
+
+// Source switch: Frogtech, each enabled repository, then GameBanana Mods / Sounds.
+let sourcesKey = "";
+function renderSources() {
+  if (!S) return;
+  const repos = S.repos.filter((r) => r.enabled);
+  const key = JSON.stringify(repos.map((r) => [r.id, r.name, r.icon]));
+  if (key === sourcesKey) return;
+  sourcesKey = key;
+  const btn = (model, label, iconUrl) => {
+    const b = h("button", { "data-model": model, class: B.model === model ? "on" : "" },
+      iconUrl && (iconUrl.startsWith("/") ? iconUrl : cached(iconUrl)) ? h("img", { src: iconUrl.startsWith("/") ? iconUrl : cached(iconUrl), alt: "", style: "width:16px;height:16px;border-radius:3px;object-fit:cover" }) : null, label);
+    b.addEventListener("click", () => { if (B.model === model) return; B.model = model; B.cat = 0; B.ftag = null; applySource(); });
+    return b;
+  };
+  $("bModel").replaceChildren(...repos.map((r) => btn(r.builtin ? "Frogtech" : "repo:" + r.id, r.builtin ? "Frogtech" : r.name, r.builtin ? "/favicon.ico" : r.icon)),
+    btn("Mod", "Mods"), btn("Sound", "Sounds"));
+  if (isRepoSource(B.model) && !currentRepo()) { B.model = repos.length ? (repos[0].builtin ? "Frogtech" : "repo:" + repos[0].id) : "Mod"; if (B.inited && tab === "browse") applySource(); }
+}
+
+// ---- updates ----
+const lastCheckText = () => S.lastCheck && !S.lastCheck.startsWith("0001")
+  ? "checked " + new Date(S.lastCheck).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "not checked yet";
+function renderUpdates() {
+  $("updVer").textContent = S.version.replace(/-dev$/, " (dev)");
+  const busy = /loader/i.test(S.busy || "");
+  const A = $("updActions"); A.replaceChildren();
+  const notes = $("updNotes"); notes.replaceChildren(); notes.classList.add("hidden");
+  if (busy) {
+    $("updStatus").textContent = "Updating… the loader restarts in a moment.";
+    A.append(h("button", { class: "primary", disabled: true }, h("span", { class: "spin" }), "Updating"));
+    return;
+  }
+  if (S.loaderUpdate) {
+    $("updStatus").textContent = "Version " + S.loaderUpdate + " is ready · " + lastCheckText();
+    A.append(h("button", { class: "primary", onclick: updateLoader }, icon("download"), "Update to " + S.loaderUpdate));
+    if ((S.loaderNotes || []).length) { notes.classList.remove("hidden"); notes.append(...S.loaderNotes.map((n) => h("li", {}, n))); }
+  } else $("updStatus").textContent = S.lastCheck && !S.lastCheck.startsWith("0001") ? "You're up to date · " + lastCheckText() : "Not checked yet";
+  A.append(h("button", { class: "outline", onclick: (e) => checkNow(e.currentTarget) }, "Check for updates"));
+}
+function updateLoader() {
+  if (!S.loaderUpdate) return;
+  toast("Updating to " + S.loaderUpdate + "; the loader restarts in a moment.", "info");
+  quiet(act("self-update", {}));
+}
+function updateAll() { quiet(act("mods/update-all", {}, (r) => r.installed.length ? "Updated: " + r.installed.join(", ") : "Nothing to update")); }
+function loaderDialog(res) {
+  const notes = (res.loaderNotes || []).length ? h("div", {}, h("div", { style: "margin-top:10px;color:var(--text)" }, "What's new"), h("ul", {}, res.loaderNotes.map((n) => h("li", {}, n)))) : null;
+  return ask({ key: "loaderAuto", ok: "Update now", cancel: "Later",
+    title: "Frogtech Mod Loader " + res.loader + " is available",
+    body: h("div", {}, "You have " + res.current + ". Update now? The loader restarts.", notes),
+    dontLabel: "Always update the loader automatically",
+    onDont: () => quiet(act("settings", Object.assign({}, S.settings, { autoUpdate: true }), "The loader now updates itself automatically")) })
+    .then((yes) => { if (yes) updateLoader(); });
+}
+// A check the user asked for: always says what it found.
+async function checkNow(btn) {
+  if (btn) { btn.disabled = true; btn.replaceChildren(h("span", { class: "spin" }), "Checking"); }
+  try {
+    const { result: res } = await api("check", {});
+    await refresh();
+    if (res.mods.length) toast(plural(res.mods.length, "mod update") + " ready: " + res.mods.join(", "), "info", { label: "Update all", run: updateAll });
+    if (res.loader) await loaderDialog(res);
+    else if (!res.mods.length) toast("Everything is up to date", "ok");
+  } catch (e) {
+    if (e.message !== "not connected") toast("Couldn't check for updates: " + e.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.replaceChildren("Check for updates"); }
+    refresh();
+  }
+}
+
+async function refresh() {
+  try {
+    const first = !S;
+    S = await api("status");
+    if (first && !S.mods.length && !location.hash) setTab("browse");
+    render();
+    if (!catalogRequested && !S.catalog.length) { catalogRequested = true; quiet(api("catalog/refresh", {}).then(refresh)); }
+  } catch (e) { /* gate / toast */ }
+}
+
+// Events from the loader (frogmod:// links, background results).
+async function pollEvents() {
+  try {
+    const evs = await api("events");
+    for (const ev of evs) {
+      if (ev.kind === "toast") toast(ev.text, ev.level);
+      if (ev.kind === "repo-add") { setTab("settings"); $("reposCard").scrollIntoView({ block: "start" }); addRepoDialog(ev.text); }
+      if (ev.kind === "nav" && ev.text === "updates") { setTab("settings"); $("updatesCard").scrollIntoView({ block: "start" }); }
+      if (ev.kind === "open") { if (B.model === "Frogtech") B.model = ev.model; setTab("browse"); if (B.inited) applySource(); openDetails(ev.model, ev.gbId); }
+    }
+    if (evs.length) refresh();
+  } catch (e) { /* ignore */ }
+}
+
+// ---- add mods ----
+async function upload(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append("file", f, f.name);
+  toast("Adding " + plural(files.length, "file") + "…", "info");
+  await quiet(act("mods/upload", fd, (r) => plural(r.added, "mod") + " added"));
+}
+$("dropIcon").replaceWith(icon("upload"));
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+$("file").addEventListener("change", (e) => { if (e.target.files.length) upload([...e.target.files]); e.target.value = ""; });
+for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, (e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); drop.classList.add("over"); } });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files.length) upload([...e.dataTransfer.files]); });
+window.addEventListener("dragover", (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); });
+window.addEventListener("drop", (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); });
+
+$("gbLook").addEventListener("click", () => {
+  const url = $("gbUrl").value.trim();
+  const m = url.match(/gamebanana\.com\/(mods|sounds)\/(?:download\/)?(\d+)/i) || url.match(/^()(\d+)$/);
+  if (!m) { toast("That isn't a GameBanana mod link. It looks like gamebanana.com/mods/123456.", "error"); return; }
+  openDetails(/sounds/i.test(m[1]) ? "Sound" : "Mod", Number(m[2]));
+});
+$("gbUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") $("gbLook").click(); });
+
+// ---- tags -> Browse ----
+async function categoryId(model, name, root) {
+  if (!name) return 0;
+  const cats = B.cats[model] || (B.cats[model] = await api("browse/categories?model=" + model));
+  const eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  const roots = root ? cats.filter((c) => eq(c.name, root)) : cats;
+  for (const c of roots) if (eq(c.name, name)) return c.id;
+  for (const c of roots) for (const k of c.children || []) if (eq(k.name, name)) return k.id;
+  for (const c of cats) for (const k of c.children || []) if (eq(k.name, name)) return k.id;
+  return 0;
+}
+async function findSimilar(target) {
+  while (modalStack.length) modalStack[modalStack.length - 1].close();
+  let model, name = null, root = null, ftag = null;
+  if (target.frog) {
+    const m = FROG_TO_GB[target.frog];
+    if (m) [model, name] = m; else { model = "Frogtech"; ftag = target.frog; }
+  } else ({ model, name, root } = target);
+  let cat = 0;
+  if (model !== "Frogtech") { try { cat = await categoryId(model, name, root); } catch (e) { /* fall back to all */ } }
+  B.inited = true; B.model = model; B.cat = cat; B.q = ""; B.ftag = ftag; $("bSearch").value = "";
+  setTab("browse");
+  applySource();
+}
+
+// ---- browse ----
+const B = { model: "Frogtech", sort: "liked", cat: 0, ftag: null, q: "", page: 0, more: true, loading: false, gen: 0, inited: false, cats: {} };
+$("searchIcon").replaceWith(icon("search"));
+
+function browseInit() {
+  if (B.inited) return;
+  B.inited = true;
+  applySource();
+}
+// Frogtech shows our catalog (no search/sort/categories); Mods/Sounds page through GameBanana.
+function applySource() {
+  const frog = isRepoSource(B.model);
+  document.querySelectorAll(".gbonly").forEach((el) => el.classList.toggle("hidden", frog));
+  $("bModel").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x.dataset.model === B.model));
+  if (frog) { $("bNote").classList.add("hidden"); B.gen++; renderFrogtech(true); return; }
+  B.ftag = null;
+  $("bSearch").placeholder = "Search Deadlock " + (B.model === "Sound" ? "sounds" : "mods");
+  loadCategories(); browseReset();
+}
+async function loadCategories() {
+  const sel = $("bCat"), model = B.model;
+  sel.replaceChildren(h("option", { value: "0" }, "All categories"));
+  try {
+    const cats = B.cats[model] || (B.cats[model] = await api("browse/categories?model=" + model));
+    if (model !== B.model) return;
+    for (const c of cats) {
+      sel.append(h("option", { value: c.id }, c.name));
+      for (const k of c.children || []) sel.append(h("option", { value: k.id }, "\u00a0\u00a0\u00a0" + k.name));
+    }
+    sel.value = String(B.cat || 0);
+  } catch (e) { /* the list works without categories */ }
+}
+function browseReset() {
+  B.gen++; B.page = 0; B.more = true; B.loading = false;
+  $("bGrid").replaceChildren(...Array.from({ length: 8 }, () => h("div", { class: "tile skel" })));
+  $("sentinel").replaceChildren();
+  $("bNote").classList.toggle("hidden", !B.q);
+  $("bCat").disabled = !!B.q;
+  loadMore();
+}
+async function loadMore() {
+  if (B.loading || !B.more || tab !== "browse" || isRepoSource(B.model)) return;
+  B.loading = true;
+  const gen = B.gen, s = $("sentinel");
+  if (B.page > 0) s.replaceChildren(h("span", { class: "spin" }));
+  const p = new URLSearchParams({ model: B.model, sort: B.sort, page: B.page + 1 });
+  if (B.q) p.set("q", B.q); else if (B.cat) p.set("cat", B.cat);
+  try {
+    const r = await api("browse?" + p);
+    if (gen !== B.gen) return;
+    if (B.page === 0) $("bGrid").replaceChildren();
+    B.page = r.page; B.more = r.more;
+    for (const it of r.items) $("bGrid").append(tile(it));
+    s.replaceChildren();
+    if (!B.more && r.total) s.textContent = "That's all of them.";
+    if (!r.total) $("bGrid").replaceChildren(h("div", { class: "empty", style: "grid-column:1/-1" }, h("h3", {}, "Nothing found"), "Try other words or another category."));
+  } catch (e) {
+    if (gen !== B.gen) return;
+    if (B.page === 0) $("bGrid").replaceChildren();
+    s.replaceChildren(h("span", { class: "ash" }, "Couldn't reach GameBanana.\u00a0"), h("button", { class: "outline sm", onclick: () => { B.loading = false; loadMore(); } }, "Try again"));
+    B.loading = false; return;
+  }
+  B.loading = false;
+  requestAnimationFrame(() => { if (B.more && s.getBoundingClientRect().top < innerHeight + 400) loadMore(); });
+}
+new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { root: $("scroller"), rootMargin: "400px" }).observe($("sentinel"));
+
+function thumbBox(src, nsfw) {
+  const box = h("div", { class: "thumb" + (nsfw && !(S && S.settings.showMature) ? " blur" : "") });
+  if (gbImg(src)) box.append(h("img", { src: src, loading: "lazy", alt: "" }));
+  else box.append(h("div", { class: "noimg" }, icon("music")));
+  return box;
+}
+function installBtn(model, id, label, fileId, name, cls) {
+  const b = h("button", { class: cls || "primary sm" }, icon("download"), label || "Install");
+  b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Installing");
+    try {
+      await act("gamebanana/add", { model, gbId: id, fileId: fileId || 0 }, (name || "Mod") + " installed");
+      b.replaceWith(h("span", { class: "badge-ok" }, icon("check"), "Installed"));
+    } catch { b.disabled = false; b.replaceChildren(icon("download"), label || "Install"); }
+  });
+  return b;
+}
+function tile(it) {
+  const cat = it.category ? it.category.split(" / ") : [];
+  const t = h("div", { class: "tile", title: it.name, tabindex: "0" },
+    thumbBox(it.thumb, it.nsfw),
+    h("div", { class: "body" },
+      cat.length ? h("div", { class: "chips" }, chip(cat[cat.length - 1], gbKind(it.model, it.category), { model: it.model, name: cat[cat.length - 1], root: cat.length > 1 ? cat[0] : null })) : null,
+      h("h3", {}, it.name),
+      h("div", { class: "by" }, "by " + (it.author || "unknown")),
+      h("div", { class: "stats" }, h("span", { title: "Likes" }, icon("heart"), fmtNum(it.likes)), h("span", { title: "Views" }, icon("eye"), fmtNum(it.views)),
+        it.updated ? h("span", { title: "Last updated" }, fmtDate(it.updated)) : null),
+      h("div", { class: "foot" }, it.installed ? h("span", { class: "badge-ok" }, icon("check"), "Installed") : installBtn(it.model, it.id, "Install", 0, it.name),
+        h("span", { class: "grow" }), h("button", { class: "ghost sm" }, "Details"))));
+  if (it.nsfw) t.querySelector(".thumb").append(h("span", { class: "tag" }, chip("Mature", "access")));
+  t.addEventListener("click", () => openDetails(it.model, it.id));
+  t.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === t) openDetails(it.model, it.id); });
+  return t;
+}
+
+async function openDetails(model, id) {
+  const box = h("div", { class: "box wide det", role: "dialog", "aria-modal": "true" }, h("div", { class: "skel", style: "height:34px;width:55%" }),
+    h("div", { class: "skel", style: "height:360px;margin-top:16px" }));
+  const entry = openModal(box);
+  let d;
+  try { d = await api("browse/item?model=" + encodeURIComponent(model) + "&id=" + id); }
+  catch (e) { box.replaceChildren(xButton(entry.close), h("h3", {}, "Couldn't open this mod"), h("div", { class: "body" }, e.message)); return; }
+  const hide = d.nsfw && !(S && S.settings.showMature);
+  const imgs = d.images.filter(gbImg);
+  const full = (d.imagesFull || []).length === d.images.length ? d.images.map((u, i) => gbImg(u) && (gbImg(d.imagesFull[i]) || u)).filter(Boolean) : imgs;
+  let gallery = null;
+  if (imgs.length) {
+    let cur = 0;
+    const big = h("img", { class: "big", src: imgs[0], alt: "", title: "Click to enlarge" });
+    const strip = h("div", { class: "strip" }, imgs.map((u, i) => {
+      const im = h("img", { src: u, class: i === 0 ? "on" : "", loading: "lazy", alt: "" });
+      im.addEventListener("click", () => { cur = i; big.src = u; strip.querySelectorAll("img").forEach((x) => x.classList.toggle("on", x === im)); });
+      return im;
+    }));
+    gallery = h("div", { class: "gallery" + (hide ? " blur" : "") }, big, imgs.length > 1 ? strip : null);
+    big.addEventListener("click", () => { if (gallery.classList.contains("blur")) gallery.classList.remove("blur"); else lightbox(full, cur); });
+  }
+  const files = h("div", { class: "files" }, d.files.length ? d.files.map((f, i) => h("div", { class: "file" },
+    h("div", { class: "grow", style: "min-width:0" }, h("div", { class: "path", style: "color:var(--text)" }, f._sFile),
+      h("div", { class: "ash", style: "font-size:13px" }, fmtSize(f._nFilesize) + " · " + fmtDate(f._tsDateAdded) + (i === 0 ? " · newest, kept up to date" : " · older, won't update") +
+        (f._sDescription ? " · " + f._sDescription : ""))),
+    d.installed && d.installedFileId === f._idRow ? h("span", { class: "badge-ok" }, icon("check"), "Installed")
+      : installBtn(d.model, d.id, d.installed ? "Use this one" : "Install", i === 0 ? 0 : f._idRow, d.name, i === 0 ? "primary" : "outline")))
+    : h("div", { class: "ash" }, "There's nothing to download."));
+  box.replaceChildren(h("div", {},
+    xButton(entry.close),
+    d.category || d.model === "Sound" ? h("div", { class: "chips", style: "margin-bottom:10px" },
+      d.category ? chip(d.category, gbKind(d.model, d.category), { model: d.model, name: d.category }) : chip("Sound", "social"),
+      (d.ratings || []).map((r) => chip(r, "access"))) : null,
+    h("h3", { style: "font-size:20px" }, d.name),
+    h("div", { class: "stats", style: "margin:10px 0 16px;font-size:14px" }, h("span", {}, "by " + (d.author || "unknown")),
+      d.version ? h("span", { class: "brass" }, "v" + d.version) : null,
+      h("span", { title: "Downloads" }, icon("download"), fmtNum(d.downloads)), h("span", { title: "Likes" }, icon("heart"), fmtNum(d.likes)),
+      h("span", { title: "Views" }, icon("eye"), fmtNum(d.views)), h("span", {}, "updated " + fmtDate(d.updated))),
+    gallery,
+    d.audio && /^https:\/\/files\.gamebanana\.com\//.test(d.audio) ? h("audio", { controls: true, src: d.audio, style: "width:100%;margin-top:10px" }) : null,
+    h("h4", {}, "Download"), files,
+    d.text || d.summary ? h("h4", {}, "About") : null,
+    d.text || d.summary ? h("div", { class: "text" }, d.text || d.summary) : null,
+    h("div", { class: "row", style: "margin-top:16px" }, h("button", { class: "ghost sm", onclick: () => openExternal(d.page) }, "Open on GameBanana", icon("ext")))));
+  const first = box.querySelector(".files button.primary"); if (first) first.focus();
+}
+
+
+let searchTimer;
+$("bSearch").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { B.q = $("bSearch").value.trim(); browseReset(); }, 400); });
+$("bSort").addEventListener("change", () => { B.sort = $("bSort").value; browseReset(); });
+$("bCat").addEventListener("change", () => { B.cat = Number($("bCat").value); browseReset(); });
+
+// ---- buttons ----
+$("play").append(icon("play"), "Play Deadlock");
+$("advIcon").replaceWith(icon("chev"));
+$("play").addEventListener("click", async () => {
+  try { await api("play", {}); toast("Starting Deadlock…", "ok"); }
+  catch (e) {
+    if (e.message === "not connected") return;
+    if (e.data && e.data.gameRunning) toast(e.message, "error");
+    else if (await ask({ key: "playAnyway", title: "Play anyway?", body: e.message, ok: "Play anyway" })) quiet(act("play", { force: true }, "Starting Deadlock…"));
+  } finally { refresh(); }
+});
+$("applyBtn").addEventListener("click", () => quiet(act("apply", {}, "Changes applied")));
+$("checkBtn").addEventListener("click", (e) => checkNow(e.currentTarget));
+$("openAddons").addEventListener("click", () => quiet(act("open-folder", {})));
+$("openData").addEventListener("click", () => quiet(act("open-folder", { id: "data" })));
+$("gameDir").addEventListener("input", () => (dirTouched = true));
+$("saveDir").addEventListener("click", () => { dirTouched = false; quiet(act("gamedir", { path: $("gameDir").value }, "Game folder saved")); });
+$("autoDir").addEventListener("click", () => { dirTouched = false; quiet(act("gamedir", { path: "" }, "Found Deadlock")); });
+$("resetAsk").addEventListener("click", () => quiet(act("settings/reset-dontask", {}, "The loader will ask again")));
+$("quitBtn").addEventListener("click", async () => {
+  if (!await ask({ key: "quit", title: "Quit the loader?", ok: "Quit", danger: true,
+    body: "Your mods stay installed, but they won't be switched back on after game updates until the loader runs again." })) return;
+  await quiet(api("quit", {}));
+  clearInterval(timer); clearInterval(evTimer);
+  document.body.replaceChildren(h("main", {}, h("div", { class: "empty", style: "margin-top:60px" }, h("h3", {}, "The loader has stopped"), "Start it again from the Start menu or the desktop.")));
+});
+for (const el of document.querySelectorAll("[data-setting]")) {
+  el.addEventListener("change", () => {
+    const s = Object.assign({}, S.settings, { [el.dataset.setting]: el.checked });
+    quiet(act("settings", s, "Saved"));
+    if (el.dataset.setting === "showMature") document.querySelectorAll(".tile .thumb").forEach((t) => t.classList.toggle("blur", !el.checked && !!t.querySelector(".tag")));
+  });
+}
+
+// ---- the frog's eyes follow the mouse (same maths as the site's Frog.svelte) ----
+(() => {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const svg = $("frog"), pupils = $("pupils");
+  let frame = 0;
+  addEventListener("pointermove", (e) => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const r = svg.getBoundingClientRect();
+      const x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height * 0.36);
+      const d = Math.hypot(x, y) || 1, k = Math.min(1, d / 200) * 7; // up to 7 of the eye's 19 units
+      pupils.classList.remove("home");
+      pupils.style.transform = `translate(${(x / d) * k}px, ${(y / d) * k}px)`;
+    });
+  });
+  // The window only sees the pointer while it's inside: look ahead again when it leaves.
+  document.documentElement.addEventListener("pointerleave", () => {
+    cancelAnimationFrame(frame);
+    pupils.classList.add("home");
+    pupils.style.transform = "translate(0px, 0px)";
+  });
+})();
+
+// ---- window chrome ----
+// The window has no native frame: this bar moves it (drag), maximises it
+// (double-click), shows the system menu (right-click), and the edges resize
+// it. The native side gets short messages over WebView2's postMessage.
+const host = window.chrome && window.chrome.webview;
+const win = (msg) => { if (host) host.postMessage("frog:" + msg); };
+window.frogWin = (state) => {
+  const max = state === "max";
+  document.documentElement.classList.toggle("maximized", max);
+  $("wMax").replaceChildren(icon(max ? "wrestore" : "wmax"));
+  $("wMax").title = max ? "Restore" : "Maximise";
+};
+$("wMin").append(icon("wmin")); $("wMax").append(icon("wmax")); $("wClose").append(icon("wclose"));
+$("wMin").addEventListener("click", () => win("min"));
+$("wMax").addEventListener("click", () => win("max"));
+$("wClose").addEventListener("click", () => win("close"));
+let lastDown = 0, lastX = 0, lastY = 0;
+$("titlebar").addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || e.target.closest("button, a, input, select, nav")) return;
+  const now = Date.now(), dbl = now - lastDown < 450 && Math.abs(e.screenX - lastX) < 6 && Math.abs(e.screenY - lastY) < 6;
+  lastDown = dbl ? 0 : now; lastX = e.screenX; lastY = e.screenY;
+  e.preventDefault();
+  win(dbl ? "max" : "drag");
+});
+$("titlebar").addEventListener("contextmenu", (e) => { if (!e.target.closest("button, a, input, select")) { e.preventDefault(); win("sysmenu"); } });
+for (const el of document.querySelectorAll(".edge")) el.addEventListener("mousedown", (e) => { if (e.button === 0) { e.preventDefault(); win("resize:" + el.dataset.ht); } });
+win("state");
+
+
+if (["#browse", "#settings"].includes(location.hash)) setTab(location.hash.slice(1));
+if (location.hash === "#settings-adv") { setTab("settings"); document.querySelector("details.adv").open = true; }
+const deep = location.hash.match(/^#gb\/(Mod|Sound)\/(\d+)$/);
+if (deep) openDetails(deep[1], Number(deep[2]));
+refresh();
+pollEvents();
+const timer = setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+const evTimer = setInterval(() => { if (!document.hidden) pollEvents(); }, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); pollEvents(); } });
+</script>
+</body>
+</html>

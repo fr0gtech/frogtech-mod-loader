@@ -1,0 +1,296 @@
+{
+    "_aMetadata": {
+        "_nRecordCount": 4714,
+        "_bIsComplete": false,
+        "_nPerpage": 3
+    },
+    "_aRecords": [
+        {
+            "_idRow": 599927,
+            "_sModelName": "Mod",
+            "_sSingularTitle": "Mod",
+            "_sIconClasses": "SubmissionType Mod",
+            "_sName": "Yamato redesign (NEW ICONS and COLORS!)",
+            "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/599927",
+            "_tsDateAdded": 1749645061,
+            "_tsDateModified": 1771254510,
+            "_bHasFiles": true,
+            "_aTags": [],
+            "_aPreviewMedia": {
+                "_aImages": [
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "6988989395e38.jpg",
+                        "_sFile220": "220-90_6988989395e38.jpg",
+                        "_hFile220": 165,
+                        "_wFile220": 220,
+                        "_sFile530": "530-90_6988989395e38.jpg",
+                        "_hFile530": 397,
+                        "_wFile530": 530,
+                        "_sFile100": "100-90_6988989395e38.jpg",
+                        "_hFile100": 75,
+                        "_wFile100": 100,
+                        "_sFile800": "800-90_6988989395e38.jpg",
+                        "_hFile800": 599,
+                        "_wFile800": 800
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "68a6b23fe674f.jpg",
+                        "_sFile100": "100-90_68a6b23fe674f.jpg",
+                        "_hFile100": 75,
+                        "_wFile100": 100
+                    }
+                ]
+            },
+            "_aSubmitter": {
+                "_idRow": 4183371,
+                "_sName": "Kirill Senzu",
+                "_bIsOnline": false,
+                "_bHasRipe": false,
+                "_sProfileUrl": "https:\/\/gamebanana.com\/members\/4183371",
+                "_sAvatarUrl": "https:\/\/images.gamebanana.com\/img\/av\/686cd55eed86d.png"
+            },
+            "_aGame": {
+                "_idRow": 20948,
+                "_sName": "Deadlock",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/games\/20948",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/games\/6abe8b273abb4.png"
+            },
+            "_aRootCategory": {
+                "_sName": "Skins",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/33295",
+                "_sIconUrl": ""
+            },
+            "_aSubCategory": {
+                "_sName": "Yamato",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/33328",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/ModCategory\/6931cb1d2667d.png"
+            },
+            "_sVersion": "1.3",
+            "_tsDateUpdated": 1771254604,
+            "_bIsObsolete": false,
+            "_sInitialVisibility": "show",
+            "_bHasContentRatings": false,
+            "_nLikeCount": 539,
+            "_nPostCount": 99,
+            "_bWasFeatured": true,
+            "_nViewCount": 205033,
+            "_bIsOwnedByAccessor": false
+        },
+        {
+            "_idRow": 554012,
+            "_sModelName": "Mod",
+            "_sSingularTitle": "Mod",
+            "_sIconClasses": "SubmissionType Mod",
+            "_sName": "Bikinidicta - Beach Vindicta Skin",
+            "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/554012",
+            "_tsDateAdded": 1730936833,
+            "_tsDateModified": 1791899497,
+            "_bHasFiles": true,
+            "_aTags": [],
+            "_aPreviewMedia": {
+                "_aImages": [
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "674fb912ba636.jpg",
+                        "_sFile220": "220-90_674fb912ba636.jpg",
+                        "_hFile220": 157,
+                        "_wFile220": 220,
+                        "_sFile530": "530-90_674fb912ba636.jpg",
+                        "_hFile530": 379,
+                        "_wFile530": 530,
+                        "_sFile100": "100-90_674fb912ba636.jpg",
+                        "_hFile100": 72,
+                        "_wFile100": 100,
+                        "_sFile800": "800-90_674fb912ba636.jpg",
+                        "_hFile800": 572,
+                        "_wFile800": 800
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "674fb4f2ac1e4.jpg",
+                        "_sFile100": "100-90_674fb4f2ac1e4.jpg",
+                        "_hFile100": 72,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf53ae8383.jpg",
+                        "_sFile100": "100-90_672bf53ae8383.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf54aa2027.jpg",
+                        "_sFile100": "100-90_672bf54aa2027.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf57886171.jpg",
+                        "_sFile100": "100-90_672bf57886171.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf6373bc8f.jpg",
+                        "_sFile100": "100-90_672bf6373bc8f.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf766b9b7a.jpg",
+                        "_sFile100": "100-90_672bf766b9b7a.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf775211ac.jpg",
+                        "_sFile100": "100-90_672bf775211ac.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "672bf78563c32.jpg",
+                        "_sFile100": "100-90_672bf78563c32.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100
+                    }
+                ]
+            },
+            "_aSubmitter": {
+                "_idRow": 3941082,
+                "_sName": "Keller Max",
+                "_bIsOnline": false,
+                "_bHasRipe": false,
+                "_sProfileUrl": "https:\/\/gamebanana.com\/members\/3941082",
+                "_sAvatarUrl": "https:\/\/images.gamebanana.com\/static\/img\/defaults\/avatar.gif"
+            },
+            "_aGame": {
+                "_idRow": 20948,
+                "_sName": "Deadlock",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/games\/20948",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/games\/6abe8b273abb4.png"
+            },
+            "_aRootCategory": {
+                "_sName": "Skins",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/33295",
+                "_sIconUrl": ""
+            },
+            "_aSubCategory": {
+                "_sName": "Vindicta",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/33324",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/ModCategory\/6931caff46b6a.png"
+            },
+            "_sVersion": "v2_09",
+            "_tsDateUpdated": 1791899636,
+            "_bIsObsolete": false,
+            "_sInitialVisibility": "warn",
+            "_bHasContentRatings": true,
+            "_nLikeCount": 518,
+            "_nPostCount": 115,
+            "_bWasFeatured": false,
+            "_nViewCount": 310334,
+            "_bIsOwnedByAccessor": false
+        },
+        {
+            "_idRow": 656006,
+            "_sModelName": "Mod",
+            "_sSingularTitle": "Mod",
+            "_sIconClasses": "SubmissionType Mod",
+            "_sName": "Holliday Remodel",
+            "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/656006",
+            "_tsDateAdded": 1772045221,
+            "_tsDateModified": 1772083769,
+            "_bHasFiles": true,
+            "_aTags": [
+                "Software Used: Blender",
+                "Software Used: Photoshop",
+                "Software Used: Substance Painter",
+                "Software Used: ZBrush",
+                "Source 2"
+            ],
+            "_aPreviewMedia": {
+                "_aImages": [
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "699f402d1619c.jpg",
+                        "_sFile220": "220-90_699f402d1619c.jpg",
+                        "_hFile220": 123,
+                        "_wFile220": 220,
+                        "_sFile530": "530-90_699f402d1619c.jpg",
+                        "_hFile530": 297,
+                        "_wFile530": 530,
+                        "_sFile100": "100-90_699f402d1619c.jpg",
+                        "_hFile100": 56,
+                        "_wFile100": 100,
+                        "_sFile800": "800-90_699f402d1619c.jpg",
+                        "_hFile800": 449,
+                        "_wFile800": 800
+                    },
+                    {
+                        "_sType": "screenshot",
+                        "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                        "_sFile": "699f42ee20ba9.jpg",
+                        "_sFile100": "100-90_699f42ee20ba9.jpg",
+                        "_hFile100": 44,
+                        "_wFile100": 100
+                    }
+                ]
+            },
+            "_aSubmitter": {
+                "_idRow": 4183371,
+                "_sName": "Kirill Senzu",
+                "_bIsOnline": false,
+                "_bHasRipe": false,
+                "_sProfileUrl": "https:\/\/gamebanana.com\/members\/4183371",
+                "_sAvatarUrl": "https:\/\/images.gamebanana.com\/img\/av\/686cd55eed86d.png"
+            },
+            "_aGame": {
+                "_idRow": 20948,
+                "_sName": "Deadlock",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/games\/20948",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/games\/6abe8b273abb4.png"
+            },
+            "_aRootCategory": {
+                "_sName": "Skins",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/33295",
+                "_sIconUrl": ""
+            },
+            "_aSubCategory": {
+                "_sName": "Holliday",
+                "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/36472",
+                "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/ModCategory\/6931c94f0e807.png"
+            },
+            "_sVersion": "1.1",
+            "_tsDateUpdated": 1772083838,
+            "_bIsObsolete": false,
+            "_sInitialVisibility": "show",
+            "_bHasContentRatings": false,
+            "_nLikeCount": 359,
+            "_nPostCount": 65,
+            "_bWasFeatured": true,
+            "_nViewCount": 74599,
+            "_bIsOwnedByAccessor": false
+        }
+    ]
+}

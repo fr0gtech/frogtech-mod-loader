@@ -1,0 +1,7 @@
+# Build output (./build.sh): FrogLoader.exe, the release zip, SHA256SUMS, notices
+dist/
+*.exe
+
+# Generated at build time by `go run ./tools/winres` (icon, manifest, version
+# info for the Windows exe); never commit it, the build regenerates it.
+*.syso

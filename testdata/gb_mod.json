@@ -1,0 +1,63 @@
+{
+ "_tsDateModified": 1791926508,
+ "_tsDateUpdated": 1791926552,
+ "_sName": "QOL Lock [INSTANT SAVE/LOAD UPDATE]",
+ "_sVersion": "4.0.5",
+ "_aGame": {
+  "_idRow": 20948,
+  "_sName": "Deadlock"
+ },
+ "_aSubmitter": {
+  "_sName": "civo"
+ },
+ "_aFiles": [
+  {
+   "_idRow": 1847582,
+   "_sFile": "qollock_405_13octoberhotfix.zip",
+   "_nFilesize": 10113380,
+   "_tsDateAdded": 1791926493,
+   "_nDownloadCount": 0,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1847582",
+   "_sMd5Checksum": "734bab636329758181113d516e12c418",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": false,
+   "_bHasContents": true
+  },
+  {
+   "_idRow": 1627686,
+   "_sFile": "optional_addon_neutral_icons.zip",
+   "_nFilesize": 3052,
+   "_tsDateAdded": 1771311454,
+   "_nDownloadCount": 892796,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1627686",
+   "_sMd5Checksum": "708cd96ddbb6c66ca8725c21930d033c",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": true,
+   "_bHasContents": true
+  },
+  {
+   "_idRow": 1627687,
+   "_sFile": "optional_addon_sinners_icon.zip",
+   "_nFilesize": 1902,
+   "_tsDateAdded": 1771311454,
+   "_nDownloadCount": 928477,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1627687",
+   "_sMd5Checksum": "d2ccead2acdcc1e799798e487c630ce0",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": true,
+   "_bHasContents": true
+  }
+ ]
+}

@@ -1,0 +1,101 @@
+{
+ "_aMetadata": {
+  "_nRecordCount": 109,
+  "_nPerpage": 15,
+  "_bIsComplete": false
+ },
+ "_aRecords": [
+  {
+   "_idRow": 83198,
+   "_sModelName": "Sound",
+   "_sSingularTitle": "Sound",
+   "_sIconClasses": "SubmissionType Sound",
+   "_sName": "Drifter Flow",
+   "_sProfileUrl": "https://gamebanana.com/sounds/83198",
+   "_tsDateAdded": 1761329636,
+   "_tsDateModified": 1761340514,
+   "_bHasFiles": true,
+   "_aTags": [],
+   "_aPreviewMedia": {
+    "_aMetadata": {
+     "_sAudioUrl": "https://files.gamebanana.com/preview/sounds/drifter_flow_sample.mp3"
+    }
+   },
+   "_aSubmitter": {
+    "_idRow": 4913678,
+    "_sName": "Hopelessone",
+    "_bIsOnline": false,
+    "_bHasRipe": false,
+    "_sProfileUrl": "https://gamebanana.com/members/4913678",
+    "_sAvatarUrl": "https://images.gamebanana.com/img/av/68fbbf95581d2.jpg"
+   },
+   "_aGame": {
+    "_idRow": 20948,
+    "_sName": "Deadlock",
+    "_sProfileUrl": "https://gamebanana.com/games/20948",
+    "_sIconUrl": "https://images.gamebanana.com/img/ico/games/6abe8b273abb4.png"
+   },
+   "_aRootCategory": {
+    "_sName": "Killsounds",
+    "_sProfileUrl": "https://gamebanana.com/sounds/cats/5843",
+    "_sIconUrl": ""
+   },
+   "_bIsObsolete": false,
+   "_sInitialVisibility": "show",
+   "_bHasContentRatings": true,
+   "_nLikeCount": 55,
+   "_nPostCount": 9,
+   "_bWasFeatured": false,
+   "_nViewCount": 45090,
+   "_bIsOwnedByAccessor": false
+  },
+  {
+   "_idRow": 82957,
+   "_sModelName": "Sound",
+   "_sSingularTitle": "Sound",
+   "_sIconClasses": "SubmissionType Sound",
+   "_sName": "The Whistle of Death | Drifter Ultimate",
+   "_sProfileUrl": "https://gamebanana.com/sounds/82957",
+   "_tsDateAdded": 1760768051,
+   "_tsDateModified": 1761586189,
+   "_bHasFiles": true,
+   "_aTags": [
+    "Deadlock",
+    "Drifter"
+   ],
+   "_aPreviewMedia": {
+    "_aMetadata": {
+     "_sAudioUrl": "https://files.gamebanana.com/preview/sounds/the_whistle_of_death.mp3"
+    }
+   },
+   "_aSubmitter": {
+    "_idRow": 4879585,
+    "_sName": "Mene1",
+    "_bIsOnline": false,
+    "_bHasRipe": false,
+    "_sProfileUrl": "https://gamebanana.com/members/4879585",
+    "_sAvatarUrl": "https://images.gamebanana.com/img/av/68feebe7cc6bf.png"
+   },
+   "_aGame": {
+    "_idRow": 20948,
+    "_sName": "Deadlock",
+    "_sProfileUrl": "https://gamebanana.com/games/20948",
+    "_sIconUrl": "https://images.gamebanana.com/img/ico/games/6abe8b273abb4.png"
+   },
+   "_aRootCategory": {
+    "_sName": "Other/Misc",
+    "_sProfileUrl": "https://gamebanana.com/sounds/cats/5815",
+    "_sIconUrl": ""
+   },
+   "_tsDateUpdated": 1761581694,
+   "_bIsObsolete": false,
+   "_sInitialVisibility": "show",
+   "_bHasContentRatings": false,
+   "_nLikeCount": 15,
+   "_nPostCount": 4,
+   "_bWasFeatured": false,
+   "_nViewCount": 12375,
+   "_bIsOwnedByAccessor": false
+  }
+ ]
+}

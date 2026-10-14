@@ -1,0 +1,151 @@
+{
+ "_idRow": 650634,
+ "_sName": "QOL Lock [INSTANT SAVE/LOAD UPDATE]",
+ "_tsDateModified": 1791926508,
+ "_tsDateAdded": 1770149407,
+ "_tsDateUpdated": 1791926552,
+ "_sProfileUrl": "https://gamebanana.com/mods/650634",
+ "_aPreviewMedia": {
+  "_aImages": [
+   {
+    "_sType": "screenshot",
+    "_sBaseUrl": "https://images.gamebanana.com/img/ss/mods",
+    "_sFile": "6995649268824.jpg",
+    "_sFile220": "220-90_6995649268824.jpg",
+    "_hFile220": 124,
+    "_wFile220": 220,
+    "_sFile530": "530-90_6995649268824.jpg",
+    "_hFile530": 298,
+    "_wFile530": 530,
+    "_sFile100": "100-90_6995649268824.jpg",
+    "_hFile100": 56,
+    "_wFile100": 100
+   },
+   {
+    "_sType": "screenshot",
+    "_sBaseUrl": "https://images.gamebanana.com/img/ss/mods",
+    "_sFile": "6a10fb7166650.jpg",
+    "_sFile100": "100-90_6a10fb7166650.jpg",
+    "_hFile100": 56,
+    "_wFile100": 100
+   }
+  ]
+ },
+ "_sInitialVisibility": "show",
+ "_nDownloadCount": 8219267,
+ "_aFiles": [
+  {
+   "_idRow": 1847582,
+   "_sFile": "qollock_405_13octoberhotfix.zip",
+   "_nFilesize": 10113380,
+   "_tsDateAdded": 1791926493,
+   "_nDownloadCount": 509,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1847582",
+   "_sMd5Checksum": "734bab636329758181113d516e12c418",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": false,
+   "_bHasContents": true,
+   "_aModManagerIntegrations": [
+    {
+     "_idToolRow": 20646,
+     "_bSupportsRemoteInstall": true,
+     "_aGameRowIds": [
+      20948
+     ],
+     "_sModManagerAlias": "DeadlockModManager",
+     "_sInstallerName": "Deadlock Mod Manager",
+     "_idSubmitterRow": 4765184,
+     "_sInstallerUrl": "https://gamebanana.com/tools/20646",
+     "_sIconUrl": "https://images.gamebanana.com/img/ico/tools/68bc15e737261.png",
+     "_sDownloadUrl": "deadlock-mod-manager:https://gamebanana.com/mmdl/1847582,Mod,650634"
+    }
+   ]
+  },
+  {
+   "_idRow": 1680726,
+   "_sFile": "optional_announcer_slot1_seven_josefumivo.zip",
+   "_nFilesize": 1323205,
+   "_tsDateAdded": 1776598953,
+   "_nDownloadCount": 749928,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1680726",
+   "_sMd5Checksum": "4fae5844efb18da0587c977a8852c39d",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": false,
+   "_bHasContents": true,
+   "_aModManagerIntegrations": [
+    {
+     "_idToolRow": 20646,
+     "_bSupportsRemoteInstall": true,
+     "_aGameRowIds": [
+      20948
+     ],
+     "_sModManagerAlias": "DeadlockModManager",
+     "_sInstallerName": "Deadlock Mod Manager",
+     "_idSubmitterRow": 4765184,
+     "_sInstallerUrl": "https://gamebanana.com/tools/20646",
+     "_sIconUrl": "https://images.gamebanana.com/img/ico/tools/68bc15e737261.png",
+     "_sDownloadUrl": "deadlock-mod-manager:https://gamebanana.com/mmdl/1680726,Mod,650634"
+    }
+   ]
+  },
+  {
+   "_idRow": 1641691,
+   "_sFile": "optional_announcer_slot2__graves_bregraham.zip",
+   "_nFilesize": 1893205,
+   "_tsDateAdded": 1772855812,
+   "_nDownloadCount": 855438,
+   "_sDownloadUrl": "https://gamebanana.com/dl/1641691",
+   "_sMd5Checksum": "5feb14a68c83aaf1a85312020bd1dba4",
+   "_sAnalysisState": "done",
+   "_sAnalysisResult": "ok",
+   "_sAnalysisResultVerbose": "File passed preliminary analysis",
+   "_sAvState": "done",
+   "_sAvResult": "clean",
+   "_bIsArchived": false,
+   "_bHasContents": true,
+   "_aModManagerIntegrations": [
+    {
+     "_idToolRow": 20646,
+     "_bSupportsRemoteInstall": true,
+     "_aGameRowIds": [
+      20948
+     ],
+     "_sModManagerAlias": "DeadlockModManager",
+     "_sInstallerName": "Deadlock Mod Manager",
+     "_idSubmitterRow": 4765184,
+     "_sInstallerUrl": "https://gamebanana.com/tools/20646",
+     "_sIconUrl": "https://images.gamebanana.com/img/ico/tools/68bc15e737261.png",
+     "_sDownloadUrl": "deadlock-mod-manager:https://gamebanana.com/mmdl/1641691,Mod,650634"
+    }
+   ]
+  }
+ ],
+ "_sDescription": "Customizable QOL / UI / HUD Mod For Deadlock",
+ "_sText": "<b>Instructions:<br></b><ul><li>Uninstall all other HUD and UI mods</li><li>Always have QOL as #1 in mod order</li><li>Issues are mostly caused by incorrect installation</li><li>Use settings menu to import/export configurations</li><li>If you need help or need to report something use the\u00a0<a href=\"https://discord.com/invite/npCvuMcTY7\" target=\"_blank\">Discord</a><br></li><li>If saving doesn't work try QOL only first, another outdated mod may be influencing it</li></ul><br><b>Optional Addons (QOL Not Required):<br></b><ul><li>Neutral Icons - Distinct Map Icons for Improved Visibility</li><li>Sinner's Icon - Golden Sinner's Icon for Improved Visibility</li><li>Footstep Occlusion - Audio Clarity and Reduced Muddiness</li></ul><br><b>Optional Announcers:</b><br><ul><li>You can download QOL Lock announcers from other creators</li><li>Whichever slot you download for will replace that slot in the mod</li><li>There are optional default announcers you can select on install</li></ul><br><b>Other Great Mods (<span class=\"GreenColor\">Compatible</span>):</b><ul class=\"SelectedElement\"><li><a href=\"https://gamebanana.com/mods/637275\">Numeric Health</a> for enemy healthbars</li><li><a href=\"https://gamebanana.com/mods/664724\">More Alternate Icons</a> for more minimap icon choices</li><li><a href=\"https://gamebanana.com/mods/674856\">Match History Cards Redesign</a> for cleaner match history</li><li><a href=\"https://gamebanana.com/mods/656341\">OptimizationLock</a> config for better performance</li></ul><br><b>Other Great Mods (<span class=\"RedColor\">Incompatible</span>):</b><ul><li>Standalone <a href=\"https://gamebanana.com/mods/623518\">Top Bar Plus </a>for improved Top Bar</li><li>Standalone <a href=\"https://gamebanana.com/mods/664456\">Better Map</a> for improved Minimap</li></ul><br>This mod is not a mod pack but an entire overhaul to Deadlock, it includes all notable HUD and UI mods from the credits lists and builds on them extensively as well as a significant amount of custom features that are built into QOL Lock, containing over 100+ features and 300+ settings you can use to modify your game to your personal preference.<br><br>",
+ "_nLikeCount": 276,
+ "_nViewCount": 213034,
+ "_sVersion": "4.0.5",
+ "_aSubmitter": {
+  "_sName": "civo"
+ },
+ "_aGame": {
+  "_idRow": 20948,
+  "_sName": "Deadlock"
+ },
+ "_aCategory": {
+  "_idRow": 46154,
+  "_sName": "Quality of Life/Fixes",
+  "_sModelName": "ModCategory",
+  "_sProfileUrl": "https://gamebanana.com/mods/cats/46154",
+  "_sIconUrl": "",
+  "_bIsObsolete": false
+ }
+}

@@ -1,0 +1,4 @@
+Add other modders' repositories in Settings > Repositories, with an optional key for paid or private mods
+Mods from your repositories show up in Browse and update automatically like ours
+"Add to Frogtech Mod Loader" buttons on modders' sites open the add dialog for you
+The frog in the title bar now watches your mouse
