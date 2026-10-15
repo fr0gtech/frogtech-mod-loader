@@ -1,0 +1,1 @@
+Fixed: the Mods on/off switch at the top now switches when you click it

@@ -21,7 +21,7 @@ import (
 )
 
 // version is set at build time with -ldflags "-X main.version=..." (build.sh).
-var version = "0.7.0-dev"
+var version = "0.7.1-dev"
 
 func dataDirPath() string {
 	if d := os.Getenv("LOCALAPPDATA"); d != "" {

@@ -1579,13 +1579,13 @@ $("wMax").addEventListener("click", () => win("max"));
 $("wClose").addEventListener("click", () => win("close"));
 let lastDown = 0, lastX = 0, lastY = 0;
 $("titlebar").addEventListener("mousedown", (e) => {
-  if (e.button !== 0 || e.target.closest("button, a, input, select, nav")) return;
+  if (e.button !== 0 || e.target.closest("button, a, input, select, label, nav")) return;
   const now = Date.now(), dbl = now - lastDown < 450 && Math.abs(e.screenX - lastX) < 6 && Math.abs(e.screenY - lastY) < 6;
   lastDown = dbl ? 0 : now; lastX = e.screenX; lastY = e.screenY;
   e.preventDefault();
   win(dbl ? "max" : "drag");
 });
-$("titlebar").addEventListener("contextmenu", (e) => { if (!e.target.closest("button, a, input, select")) { e.preventDefault(); win("sysmenu"); } });
+$("titlebar").addEventListener("contextmenu", (e) => { if (!e.target.closest("button, a, input, select, label")) { e.preventDefault(); win("sysmenu"); } });
 for (const el of document.querySelectorAll(".edge")) el.addEventListener("mousedown", (e) => { if (e.button === 0) { e.preventDefault(); win("resize:" + el.dataset.ht); } });
 win("state");
 
