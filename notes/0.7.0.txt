@@ -1,0 +1,3 @@
+Fixed: Deadlock no longer stops at start with "Unable to read default keybinding configuration" after Steam checks or updates the game files
+When Deadlock doesn't start, the loader says so and shows the game's error, with Repair (takes mods out, has Steam check the game files, puts mods back) and Start without mods
+A switch at the top turns all mods on or off; off starts Deadlock as if no mods were installed and keeps your mods for later

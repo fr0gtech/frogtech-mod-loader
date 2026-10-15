@@ -1,5 +1,6 @@
 // Package gameinfo keeps mods switched on: it makes sure game/citadel/gameinfo.gi
-// mounts citadel/addons (game updates reset it).
+// mounts citadel/addons and keeps the game's own Mod/Write folders (game
+// updates and Steam's file check reset it), and can take those lines out again.
 package gameinfo
 
 import (
@@ -14,7 +15,7 @@ import (
 // The game's gameinfo.gi lists the folders it loads content from in a
 // FileSystem { SearchPaths { ... } } block. Mods in game/citadel/addons are only
 // loaded when that block mounts "citadel/addons" before "citadel". Every game
-// update rewrites the file to vanilla, so we re-add the line.
+// update rewrites the file to vanilla, so we re-add the lines.
 
 const AddonsPath = "citadel/addons"
 
@@ -101,62 +102,174 @@ func isAddonsValue(v string) bool {
 	return strings.Contains(v, AddonsPath)
 }
 
-// HasAddons reports whether the SearchPaths block mounts citadel/addons.
-func HasAddons(content string) (bool, error) {
-	sp, err := findSearchPaths(splitLines(content))
-	if err != nil {
-		return false, err
-	}
-	for _, e := range sp.entries {
-		if isAddonsValue(e.value) {
-			return true, nil
-		}
-	}
-	return false, nil
+// The engine picks its MOD and DEFAULT_WRITE_PATH search paths from the first
+// "Game" line when the block has no Mod or Write lines, which is the case in
+// Valve's stock file. With "Game citadel/addons" first, that makes the mods
+// folder the place the game reads its own defaults from and writes to: it
+// then reports its files as damaged and stops with "Unable to read default
+// keybinding configuration". These lines, added after the last Game line,
+// keep both pointed at the game's own folders.
+var writeLines = []struct{ key, value string }{
+	{"Mod", "citadel"},
+	{"Write", "citadel"},
+	{"Mod", "core"},
+	{"Write", "core"},
 }
 
-// EnsureAddonsLine returns content with a "Game citadel/addons" search path
-// inserted as the first non-language entry (before Game/Mod citadel). The new
-// line copies the indentation, key/value spacing and line ending of the line it
-// is inserted before. changed is false when the line was already present.
-func EnsureAddonsLine(content string) (out string, changed bool, err error) {
+func isWriteLine(e searchPathLine) bool {
+	for _, w := range writeLines {
+		if strings.EqualFold(e.key, w.key) && strings.EqualFold(e.value, w.value) {
+			return true
+		}
+	}
+	return false
+}
+
+// Report says what the SearchPaths block has.
+type Report struct {
+	Addons       bool     `json:"addons"`       // mounts citadel/addons
+	MissingWrite []string `json:"missingWrite"` // Mod/Write lines that are missing, e.g. "Write citadel"
+}
+
+// Patched reports whether mods load and the game can start with them.
+func (r Report) Patched() bool { return r.Addons && len(r.MissingWrite) == 0 }
+
+// Check reports what the SearchPaths block in content has.
+func Check(content string) (Report, error) {
+	sp, err := findSearchPaths(splitLines(content))
+	if err != nil {
+		return Report{}, err
+	}
+	return check(sp), nil
+}
+
+func check(sp *searchPaths) Report {
+	r := Report{MissingWrite: []string{}}
+	for _, e := range sp.entries {
+		if isAddonsValue(e.value) {
+			r.Addons = true
+		}
+	}
+	for _, w := range writeLines {
+		found := false
+		for _, e := range sp.entries {
+			if strings.EqualFold(e.key, w.key) && strings.EqualFold(e.value, w.value) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			r.MissingWrite = append(r.MissingWrite, w.key+" "+w.value)
+		}
+	}
+	return r
+}
+
+// HasAddons reports whether the SearchPaths block mounts citadel/addons.
+func HasAddons(content string) (bool, error) {
+	r, err := Check(content)
+	return r.Addons, err
+}
+
+// Ensure returns content with a "Game citadel/addons" search path inserted as
+// the first non-language entry (before Game/Mod citadel), and the Mod/Write
+// lines that are missing added after the last entry. New lines copy the
+// indentation, key/value spacing and line ending of the line they sit next
+// to. changed is false when nothing was missing.
+func Ensure(content string) (out string, changed bool, err error) {
 	lines := splitLines(content)
 	sp, err := findSearchPaths(lines)
 	if err != nil {
 		return content, false, err
 	}
-	for _, e := range sp.entries {
-		if isAddonsValue(e.value) {
-			return content, false, nil
+	r := check(sp)
+	if r.Patched() {
+		return content, false, nil
+	}
+	insert := map[int][]string{} // line index -> new lines to put before it
+	if !r.Addons {
+		at := sp.close
+		for _, e := range sp.entries {
+			if !strings.HasPrefix(strings.ToLower(e.key), "game_") {
+				at = e.idx
+				break
+			}
+		}
+		insert[at] = append(insert[at], newLine(lines, sp, at, "Game", AddonsPath))
+	}
+	if len(r.MissingWrite) > 0 {
+		ref := sp.close
+		if n := len(sp.entries); n > 0 {
+			ref = sp.entries[n-1].idx
+		}
+		at := ref + 1 // right after the last entry (before "}" when the block is empty)
+		if ref == sp.close {
+			at = sp.close
+		}
+		for _, m := range r.MissingWrite {
+			k, v, _ := strings.Cut(m, " ")
+			insert[at] = append(insert[at], newLine(lines, sp, ref, k, v))
 		}
 	}
-	at := sp.close
-	for _, e := range sp.entries {
-		if !strings.HasPrefix(strings.ToLower(e.key), "game_") {
-			at = e.idx
-			break
-		}
+	res := make([]string, 0, len(lines)+5)
+	for i, l := range lines {
+		res = append(res, insert[i]...)
+		res = append(res, l)
 	}
-	ref := lines[at]
-	indent := ref[:len(ref)-len(strings.TrimLeft(ref, " \t"))]
+	return strings.Join(res, ""), true, nil
+}
+
+// EnsureAddonsLine is Ensure (kept for callers of the old name).
+func EnsureAddonsLine(content string) (string, bool, error) { return Ensure(content) }
+
+// newLine builds "<indent>key<sep>value<eol>" in the style of lines[ref].
+func newLine(lines []string, sp *searchPaths, ref int, key, value string) string {
+	l := lines[ref]
+	indent := l[:len(l)-len(strings.TrimLeft(l, " \t"))]
 	sep := "\t\t\t\t"
-	eol := lineEnding(ref, lines)
-	if at != sp.close {
+	eol := lineEnding(l, lines)
+	if ref != sp.close {
 		// Copy the whitespace between key and value: "\t\t\tGame\t\t\t\tcitadel".
-		rest := strings.TrimLeft(ref, " \t")
+		rest := strings.TrimLeft(l, " \t")
 		if k := strings.IndexAny(rest, " \t"); k > 0 {
 			after := rest[k:]
 			sep = after[:len(after)-len(strings.TrimLeft(after, " \t"))]
 		}
 	} else {
-		// Inserting before "}": indent one level deeper than the brace.
+		// Next to "}": indent one level deeper than the brace.
 		indent += "\t"
 	}
-	newLine := indent + "Game" + sep + AddonsPath + eol
-	res := make([]string, 0, len(lines)+1)
-	res = append(res, lines[:at]...)
-	res = append(res, newLine)
-	res = append(res, lines[at:]...)
+	return indent + key + sep + value + eol
+}
+
+// Strip undoes Ensure: it removes every citadel/addons line and the Mod/Write
+// lines at the end of the block (where Ensure puts them). Mod/Write lines
+// between Game lines (Deadlock Mod Manager's layout) are left alone. On a file
+// Ensure patched, the result is the original byte for byte.
+func Strip(content string) (out string, changed bool, err error) {
+	lines := splitLines(content)
+	sp, err := findSearchPaths(lines)
+	if err != nil {
+		return content, false, err
+	}
+	drop := map[int]bool{}
+	for i := len(sp.entries) - 1; i >= 0 && isWriteLine(sp.entries[i]); i-- {
+		drop[sp.entries[i].idx] = true
+	}
+	for _, e := range sp.entries {
+		if isAddonsValue(e.value) {
+			drop[e.idx] = true
+		}
+	}
+	if len(drop) == 0 {
+		return content, false, nil
+	}
+	res := make([]string, 0, len(lines))
+	for i, l := range lines {
+		if !drop[i] {
+			res = append(res, l)
+		}
+	}
 	return strings.Join(res, ""), true, nil
 }
 
@@ -175,19 +288,31 @@ func lineEnding(ref string, all []string) string {
 	return "\n"
 }
 
-// Fix makes sure the game's gameinfo.gi mounts the addons folder and
-// that the folder exists. It backs the original up once to gameinfo.gi.bak and
-// writes atomically. Returns true if the file was modified.
+// Fix makes sure the game's gameinfo.gi mounts the addons folder (with the
+// Mod/Write lines the game needs then) and that the folder exists. It backs
+// the original up once to gameinfo.gi.bak and writes atomically. Returns true
+// if the file was modified.
 func Fix(gameDir string) (bool, error) {
-	_, addons, path := steam.Paths(gameDir)
+	_, addons, _ := steam.Paths(gameDir)
 	if err := os.MkdirAll(addons, 0o755); err != nil {
 		return false, err
 	}
+	return rewrite(gameDir, Ensure)
+}
+
+// Unfix takes the loader's lines out again, leaving Valve's file as it was:
+// the game then loads no mods. Returns true if the file was modified.
+func Unfix(gameDir string) (bool, error) {
+	return rewrite(gameDir, Strip)
+}
+
+func rewrite(gameDir string, f func(string) (string, bool, error)) (bool, error) {
+	_, _, path := steam.Paths(gameDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
 	}
-	out, changed, err := EnsureAddonsLine(string(data))
+	out, changed, err := f(string(data))
 	if err != nil || !changed {
 		return false, err
 	}
@@ -203,12 +328,12 @@ func Fix(gameDir string) (bool, error) {
 	return true, nil
 }
 
-// Status returns ok=true when the addons line is present.
-func Status(gameDir string) (bool, error) {
+// Status reports what the game's gameinfo.gi has.
+func Status(gameDir string) (Report, error) {
 	_, _, path := steam.Paths(gameDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, err
+		return Report{MissingWrite: []string{}}, err
 	}
-	return HasAddons(string(data))
+	return Check(string(data))
 }

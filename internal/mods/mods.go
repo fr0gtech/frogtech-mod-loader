@@ -93,6 +93,33 @@ type State struct {
 	// Repos are the user's added repositories (Frogtech's is built in).
 	Repos            []*Repo `json:"repos,omitempty"`
 	FrogtechDisabled bool    `json:"frogtechDisabled,omitempty"`
+	// ModsOff is the main switch: no mod files in the game and Valve's own
+	// gameinfo.gi, until it is turned back on.
+	ModsOff bool `json:"modsOff,omitempty"`
+	// StartSeen: game crash dumps up to this time were already shown (or
+	// the game started fine after them).
+	StartSeen time.Time `json:"startSeen,omitempty"`
+	// CorruptSeen is the appmanifest LastUpdated at which the user dismissed
+	// Steam's "files damaged" flag.
+	CorruptSeen string `json:"corruptSeen,omitempty"`
+	// Repair is set while Steam checks the game files for "Repair".
+	Repair *Repair `json:"repair,omitempty"`
+	// NoModsRun is set while the game runs once without mods.
+	NoModsRun *NoModsRun `json:"noModsRun,omitempty"`
+}
+
+// Repair tracks a running repair: mods are out and Steam checks the files.
+type Repair struct {
+	Started     time.Time `json:"started"`
+	LastUpdated string    `json:"lastUpdated"` // appmanifest LastUpdated when it began
+	SawCheck    bool      `json:"sawCheck"`    // Steam was seen working on the game
+}
+
+// NoModsRun tracks "Start without mods": gameinfo.gi is Valve's until the game
+// has run and closed again.
+type NoModsRun struct {
+	Started    time.Time `json:"started"`
+	SawRunning bool      `json:"sawRunning"`
 }
 
 // WindowRect is the loader window's last normal position (physical pixels).
@@ -421,8 +448,12 @@ type Store struct {
 func (st Store) ModDir(id string) string { return filepath.Join(st.Dir, id) }
 
 // Desired returns the pak layout for enabled mods: pak01 = highest priority.
+// With the main switch off (or during a repair) nothing is wanted.
 func Desired(s *State) ([]AppliedPak, error) {
 	var out []AppliedPak
+	if s.ModsOff || s.Repair != nil {
+		return nil, nil
+	}
 	for _, m := range s.Mods {
 		if !m.Enabled {
 			continue
@@ -677,6 +708,48 @@ func (st Store) Apply(s *State, addons string) error {
 	s.AppliedOnce = true
 	s.PendingApply = false
 	return nil
+}
+
+// RemoveOurPaks deletes the pak files the loader wrote (and that are still
+// its own), leaving any other files alone. Unlike Apply it works while other
+// programs' files are in the folder. The mods stay in the store.
+func (st Store) RemoveOurPaks(s *State, addons string) (int, error) {
+	unknown, err := UnknownPaks(addons, s.Applied)
+	if err != nil {
+		return 0, err
+	}
+	foreign := map[string]bool{}
+	for _, u := range unknown {
+		foreign[strings.ToLower(u)] = true
+	}
+	var left, failed []AppliedPak
+	n := 0
+	for _, a := range s.Applied {
+		if foreign[strings.ToLower(a.Name)] || !IsPakName(a.Name) {
+			// Replaced by someone else: not ours to delete. The record stays so
+			// the page can still say which mod it replaced.
+			left = append(left, a)
+			continue
+		}
+		err := os.Remove(filepath.Join(addons, a.Name))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			left = append(left, a)
+			failed = append(failed, a)
+			continue
+		}
+		if err == nil {
+			n++
+		}
+	}
+	s.Applied = left
+	for _, m := range s.Mods {
+		m.Paks = nil
+	}
+	s.PendingApply = true
+	if len(failed) > 0 {
+		return n, fmt.Errorf("couldn't remove %s", failed[0].Name)
+	}
+	return n, nil
 }
 
 // mergeApplied keeps the record consistent after a partial apply: entries in

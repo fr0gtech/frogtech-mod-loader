@@ -16,6 +16,8 @@ type Host interface {
 	ShowWindow()                    // open or focus the window
 	ShowWindowAt(nav string)        // ... on a section ("updates")
 	CheckFromTray()                 // the tray's "Check for updates"
+	ModsOn() bool                   // the main switch, ticked in the tray menu
+	SetModsOnFromTray(on bool)      // the tray's "Mods on"
 	Quit()
 	Done() <-chan struct{} // closed when the app quits
 }

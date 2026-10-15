@@ -54,6 +54,12 @@ type App struct {
 	reposAt    time.Time // last refresh of third-party repositories
 	events     []Event
 	eventSeq   int
+	startFail  *StartFail        // "Deadlock didn't start" (set by the watcher)
+	dumpMsgs   map[string]string // crash dump path -> the game's error line
+	launchedAt time.Time         // when the loader last started the game
+	// runningSince: when the watcher first saw the game running (zero when not).
+	runningSince         time.Time
+	noModsFrom, noModsTo time.Time // the last "Start without mods" run
 
 	opMu     sync.Mutex // serializes operations that change files
 	checkNow chan struct{}
@@ -75,6 +81,7 @@ func NewApp(dataDir string) (*App, error) {
 		statePath: filepath.Join(dataDir, "state.json"),
 		store:     mods.Store{Dir: filepath.Join(dataDir, "mods")},
 		gbRemote:  map[string]*gamebanana.Mod{},
+		dumpMsgs:  map[string]string{},
 		checkNow:  make(chan struct{}, 1),
 		quit:      make(chan struct{}),
 	}
@@ -84,6 +91,9 @@ func NewApp(dataDir string) (*App, error) {
 		os.Rename(a.statePath, a.statePath+".broken")
 	}
 	a.state = st
+	if st.StartSeen.IsZero() {
+		st.StartSeen = now().Add(-firstLookBack)
+	}
 	if st.GameDir == "" || !steam.IsGameDir(st.GameDir) {
 		if dir, err := steam.FindGame(); err == nil {
 			log.Printf("found Deadlock at %s", dir)
@@ -156,15 +166,34 @@ func (a *App) SetGameDir(dir string) error {
 	return a.saveLocked()
 }
 
-// EnsureGameinfo re-adds the addons search path if a game update removed it.
+// EnsureGameinfo puts gameinfo.gi in the state the switches ask for: with the
+// loader's lines (mods on; game updates and Steam's file check remove them),
+// or Valve's own (mods off, "Start without mods"). It leaves the file alone
+// while Steam works on the game or a repair runs.
 func (a *App) EnsureGameinfo() (bool, error) {
 	dir := a.GameDir()
 	if dir == "" {
 		return false, ErrNoGame
 	}
+	a.mu.Lock()
+	off, repairing := a.modsOffLocked(), a.state.Repair != nil
+	a.mu.Unlock()
+	if repairing {
+		return false, nil
+	}
+	if off {
+		changed, err := gameinfo.Unfix(dir)
+		if changed {
+			log.Printf("gameinfo.gi: took the loader's lines out (mods off)")
+		}
+		return changed, err
+	}
+	if st, err := steam.ReadAppState(dir); err == nil && st.Working() {
+		return false, nil // patched once Steam is done
+	}
 	changed, err := gameinfo.Fix(dir)
 	if changed {
-		log.Printf("gameinfo.gi: re-added %s search path", gameinfo.AddonsPath)
+		log.Printf("gameinfo.gi: added the %s search path and the game's Mod/Write paths", gameinfo.AddonsPath)
 	}
 	return changed, err
 }
@@ -175,7 +204,7 @@ func (a *App) applyLocked() error {
 	if dir == "" {
 		return ErrNoGame
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		a.mu.Lock()
 		a.state.PendingApply = true
 		a.saveLocked()
@@ -466,7 +495,7 @@ func (a *App) ImportUnknown() error {
 	if dir == "" {
 		return ErrNoGame
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		return ErrGameRunning
 	}
 	_, addons, _ := steam.Paths(dir)
@@ -488,7 +517,13 @@ func (a *App) ImportUnknown() error {
 
 // Play makes sure everything is in place, then launches through Steam.
 func (a *App) Play(force bool) error {
-	if !platform.IsGameRunning() {
+	a.mu.Lock()
+	repairing := a.state.Repair != nil
+	a.mu.Unlock()
+	if repairing && !force {
+		return ErrRepairing
+	}
+	if !gameRunning() {
 		if _, err := a.EnsureGameinfo(); err != nil && !force {
 			return err
 		}
@@ -503,7 +538,10 @@ func (a *App) Play(force bool) error {
 		}
 	}
 	log.Printf("launching Deadlock")
-	return platform.OpenURL("steam://rungameid/" + steam.AppID)
+	a.mu.Lock()
+	a.launchedAt = now()
+	a.mu.Unlock()
+	return openURL("steam://rungameid/" + steam.AppID)
 }
 
 // SetSettings stores settings and applies the start-with-Windows toggle.
@@ -653,7 +691,7 @@ func (a *App) deleteForeign(only string) (int, error) {
 	if dir == "" {
 		return 0, ErrNoGame
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		return 0, ErrGameRunning
 	}
 	_, addons, _ := steam.Paths(dir)
@@ -698,7 +736,7 @@ func (a *App) KeepForeign(name string) (*mods.Mod, error) {
 	if dir == "" {
 		return nil, ErrNoGame
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		return nil, ErrGameRunning
 	}
 	_, addons, _ := steam.Paths(dir)
@@ -784,7 +822,7 @@ func (a *App) StartSelfUpdate() error {
 	if c == nil {
 		return errors.New("no loader update available")
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		return ErrGameRunning
 	}
 	go func() {

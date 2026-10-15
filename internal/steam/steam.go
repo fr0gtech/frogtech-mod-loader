@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -275,12 +276,66 @@ func NormalizeGameDir(dir string) string {
 	return ""
 }
 
+// ManifestPath is <lib>/steamapps/appmanifest_1422450.acf for a game folder
+// <lib>/steamapps/common/<installdir>.
+func ManifestPath(dir string) string {
+	return filepath.Join(filepath.Dir(filepath.Dir(dir)), "appmanifest_"+AppID+".acf")
+}
+
+// Bits of the appmanifest's StateFlags (Steam's EAppState).
+const (
+	StateFullyInstalled = 4
+	StateFilesCorrupt   = 128
+)
+
+// AppState is what Steam's appmanifest says about the install right now.
+type AppState struct {
+	Flags       int    // StateFlags
+	LastUpdated string // changes when Steam finishes an update or a file check
+}
+
+// FullyInstalled is true when Steam has nothing left to do (StateFlags is 4).
+func (s AppState) FullyInstalled() bool { return s.Flags == StateFullyInstalled }
+
+// Working is true while Steam updates, checks or moves the game's files.
+func (s AppState) Working() bool { return s.Flags&stateWorking != 0 }
+
+// UpdateRunning, UpdateStarted, Reconfiguring, Validating, AddingFiles,
+// Preallocating, Downloading, Staging, Committing.
+const stateWorking = 256 | 1024 | 65536 | 131072 | 262144 | 524288 | 1048576 | 2097152 | 4194304
+
+// FilesCorrupt is true after the game told Steam its files are damaged.
+func (s AppState) FilesCorrupt() bool { return s.Flags&StateFilesCorrupt != 0 }
+
+// ReadAppState reads StateFlags from the game's appmanifest.
+func ReadAppState(dir string) (AppState, error) {
+	data, err := os.ReadFile(ManifestPath(dir))
+	if err != nil {
+		return AppState{}, err
+	}
+	return ParseAppState(string(data))
+}
+
+// ParseAppState parses an appmanifest's StateFlags and LastUpdated.
+func ParseAppState(data string) (AppState, error) {
+	v, err := ParseVDF(data)
+	if err != nil {
+		return AppState{}, err
+	}
+	raw := v.Get("AppState", "StateFlags")
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 0 {
+		return AppState{}, fmt.Errorf("appmanifest: bad StateFlags %q", raw)
+	}
+	return AppState{Flags: n, LastUpdated: v.Get("AppState", "LastUpdated")}, nil
+}
+
 // ReadGameInfo reads build id (from the appmanifest next to the library) and
 // ClientVersion from steam.inf. Missing values are left empty.
 func ReadGameInfo(dir string) GameInfo {
 	gi := GameInfo{Dir: dir}
 	// <lib>/steamapps/common/<installdir> -> <lib>/steamapps/appmanifest_X.acf
-	manifest := filepath.Join(filepath.Dir(filepath.Dir(dir)), "appmanifest_"+AppID+".acf")
+	manifest := ManifestPath(dir)
 	if data, err := os.ReadFile(manifest); err == nil {
 		if v, err := ParseVDF(string(data)); err == nil {
 			gi.BuildID = v.Get("AppState", "buildid")

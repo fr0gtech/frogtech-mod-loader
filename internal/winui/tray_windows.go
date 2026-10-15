@@ -53,9 +53,11 @@ const (
 	wmRButtonUp      = 0x0205
 	mfString         = 0x0000
 	mfSeparator      = 0x0800
+	mfChecked        = 0x0008
 	trayOpen         = 1
 	trayCheck        = 2
 	trayQuit         = 3
+	trayMods         = 4
 	wmNull           = 0x0000
 	wmTrayClose      = 0x8000 + 11
 	wmTrayNotify     = 0x8000 + 12
@@ -195,6 +197,12 @@ func showTrayMenu(hwnd uintptr, a Host) {
 		pAppendMenuW.Call(menu, mfString, id, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(label))))
 	}
 	add(trayOpen, "Open")
+	modsOn := a.ModsOn()
+	flags := uintptr(mfString)
+	if modsOn {
+		flags |= mfChecked
+	}
+	pAppendMenuW.Call(menu, flags, trayMods, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("Mods on"))))
 	add(trayCheck, "Check for updates")
 	pAppendMenuW.Call(menu, mfSeparator, 0, 0)
 	add(trayQuit, "Quit")
@@ -207,6 +215,8 @@ func showTrayMenu(hwnd uintptr, a Host) {
 	switch cmd {
 	case trayOpen:
 		go a.ShowWindow()
+	case trayMods:
+		go a.SetModsOnFromTray(!modsOn)
 	case trayCheck:
 		log.Printf("update check requested from tray")
 		go a.CheckFromTray()

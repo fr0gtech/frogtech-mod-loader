@@ -58,7 +58,7 @@ func TestAppFlow(t *testing.T) {
 	if err != nil || !bytes.HasSuffix(b, []byte("uikit-v1")) {
 		t.Fatalf("mod not applied: %v", err)
 	}
-	if ok, _ := gameinfo.Status(game); !ok {
+	if r, _ := gameinfo.Status(game); !r.Patched() {
 		t.Fatal("gameinfo not patched on apply")
 	}
 

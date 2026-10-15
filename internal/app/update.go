@@ -17,8 +17,8 @@ import (
 	"github.com/fr0gtech/frogtech-mod-loader/internal/fetch"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/fsutil"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/gamebanana"
+	"github.com/fr0gtech/frogtech-mod-loader/internal/gameinfo"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/mods"
-	"github.com/fr0gtech/frogtech-mod-loader/internal/platform"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/steam"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/winui"
 )
@@ -42,15 +42,20 @@ func (a *App) watchGameinfo() {
 	defer t.Stop()
 	for {
 		a.mu.Lock()
-		keep := a.state.Settings.KeepGameinfo && a.state.GameDir != ""
-		pending := a.state.PendingApply && a.state.AppliedOnce
+		// Mods off and "Start without mods" keep Valve's file even without the setting.
+		keep := (a.state.Settings.KeepGameinfo || a.modsOffLocked()) && a.state.GameDir != ""
+		pending := a.state.PendingApply && a.state.AppliedOnce && a.state.Repair == nil
 		a.mu.Unlock()
+		a.watchStart()
+		if !keep && a.halfPatched() {
+			keep = true // a file with the addons line but no Mod/Write lines stops the game from starting
+		}
 		if keep {
 			if _, err := a.EnsureGameinfo(); err != nil {
 				log.Printf("gameinfo: %v", err)
 			}
 		}
-		if pending && !platform.IsGameRunning() && !a.hasUnknownPaks() && a.opMu.TryLock() {
+		if pending && !gameRunning() && !a.hasUnknownPaks() && a.opMu.TryLock() {
 			if err := a.applyLocked(); err != nil {
 				a.setErr(err)
 			}
@@ -62,6 +67,17 @@ func (a *App) watchGameinfo() {
 		case <-t.C:
 		}
 	}
+}
+
+// halfPatched: gameinfo.gi mounts the mods folder without the Mod/Write lines
+// (what loader 0.6 and older wrote).
+func (a *App) halfPatched() bool {
+	dir := a.GameDir()
+	if dir == "" {
+		return false
+	}
+	r, err := gameinfo.Status(dir)
+	return err == nil && r.Addons && !r.Patched()
 }
 
 // hasUnknownPaks avoids retrying an apply every few seconds while the user
@@ -181,7 +197,7 @@ func (a *App) CheckUpdates(ctx context.Context, install bool) (CheckResult, erro
 	if !install || !auto || (len(ups) == 0 && selfUp == nil) {
 		return res, nil
 	}
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		res.Waiting = true
 		return res, fmt.Errorf("%d update(s) waiting: %w", len(ups)+boolInt(selfUp != nil), ErrGameRunning)
 	}
@@ -246,7 +262,7 @@ func (a *App) installUpdates(ctx context.Context, ups []pendingUpdate, selfUp *c
 
 // UpdateAll installs every available mod update now (not the loader).
 func (a *App) UpdateAll(ctx context.Context) ([]string, error) {
-	if platform.IsGameRunning() {
+	if gameRunning() {
 		return nil, ErrGameRunning
 	}
 	return a.installUpdates(ctx, a.pendingUpdates(), nil)

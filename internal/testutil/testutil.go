@@ -66,7 +66,7 @@ func FakeLibrary(t testing.TB) (lib, game string) {
 	os.MkdirAll(cit, 0o755)
 	os.WriteFile(filepath.Join(sa, "appmanifest_1422450.acf"), []byte(Read(t, "appmanifest_1422450.acf")), 0o644)
 	os.WriteFile(filepath.Join(cit, "steam.inf"), []byte(Read(t, "steam.inf")), 0o644)
-	os.WriteFile(filepath.Join(cit, "gameinfo.gi"), []byte(Read(t, "gameinfo_vanilla.gi")), 0o644)
+	os.WriteFile(filepath.Join(cit, "gameinfo.gi"), []byte(Read(t, "gameinfo_stock_6785.gi")), 0o644)
 	return lib, game
 }
 

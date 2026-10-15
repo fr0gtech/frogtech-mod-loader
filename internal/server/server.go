@@ -349,6 +349,11 @@ func routes(a *app.App) http.Handler {
 	})
 	api.HandleFunc("POST /api/self-update", jsonOp(func(r *http.Request, b body) error { return a.StartSelfUpdate() }))
 	api.HandleFunc("POST /api/play", jsonOp(func(r *http.Request, b body) error { return a.Play(b.Force) }))
+	api.HandleFunc("POST /api/play-without-mods", jsonOp(func(r *http.Request, b body) error { return a.PlayWithoutMods() }))
+	api.HandleFunc("POST /api/mods/switch", jsonOp(func(r *http.Request, b body) error { return a.SetModsOn(b.Enabled) }))
+	api.HandleFunc("POST /api/repair", jsonOp(func(r *http.Request, b body) error { return a.Repair() }))
+	api.HandleFunc("POST /api/repair/finish", jsonOp(func(r *http.Request, b body) error { return a.FinishRepair() }))
+	api.HandleFunc("POST /api/start-fail/dismiss", jsonOp(func(r *http.Request, b body) error { return a.DismissStartFail() }))
 	api.HandleFunc("POST /api/open-folder", jsonOp(func(r *http.Request, b body) error {
 		dir := a.GameDir()
 		if b.ID == "data" {

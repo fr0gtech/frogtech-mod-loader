@@ -49,12 +49,19 @@ type statusView struct {
 	Game        steam.GameInfo `json:"game"`
 	GameFound   bool           `json:"gameFound"`
 	GameRunning bool           `json:"gameRunning"`
-	GameinfoOK  bool           `json:"gameinfoOk"`
-	GameinfoErr string         `json:"gameinfoErr,omitempty"`
-	AddonsDir   string         `json:"addonsDir,omitempty"`
-	DMM         bool           `json:"dmm"`
-	DMMLeftover bool           `json:"dmmLeftover"`
-	UnknownPaks []string       `json:"unknownPaks"`
+	// GameinfoOK: gameinfo.gi is as the switches want it (patched with mods
+	// on, Valve's with mods off).
+	GameinfoOK  bool            `json:"gameinfoOk"`
+	GameinfoErr string          `json:"gameinfoErr,omitempty"`
+	Gameinfo    gameinfo.Report `json:"gameinfo"`
+	ModsOn      bool            `json:"modsOn"`
+	StartFail   *StartFail      `json:"startFail,omitempty"`
+	Repair      *repairView     `json:"repair,omitempty"`
+	NoModsRun   bool            `json:"noModsRun"`
+	AddonsDir   string          `json:"addonsDir,omitempty"`
+	DMM         bool            `json:"dmm"`
+	DMMLeftover bool            `json:"dmmLeftover"`
+	UnknownPaks []string        `json:"unknownPaks"`
 	// UnknownDetails explains each foreign pak (size, time, contents, what it replaced).
 	UnknownDetails []mods.UnknownPak `json:"unknownDetails"`
 	PendingApply   bool              `json:"pendingApply"`
@@ -85,7 +92,7 @@ func (a *App) Status() statusView {
 	if c := a.LoaderUpdate(); c != nil {
 		loaderUp, loaderNotes = c.Loader.Version, c.Loader.Notes
 	}
-	running := platform.IsGameRunning()
+	running := gameRunning()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -94,12 +101,21 @@ func (a *App) Status() statusView {
 		Settings: a.state.Settings, RunKey: platform.GetRunAtStartup(), CatalogErr: a.catalogErr, LoaderUpdate: loaderUp, LoaderNotes: loaderNotes,
 		LastCheck: a.lastCheck, LastErr: a.lastErr, Busy: a.busy, DataDir: a.dataDir, Log: logTail(),
 		UnknownPaks: []string{}, UnknownDetails: []mods.UnknownPak{}, Mods: []modView{}, Catalog: []catalogView{},
+		ModsOn: !a.state.ModsOff, StartFail: a.startFail, NoModsRun: a.state.NoModsRun != nil,
+	}
+	if r := a.state.Repair; r != nil {
+		s.Repair = &repairView{Started: r.Started, Checking: r.SawCheck}
 	}
 	if dir := a.state.GameDir; dir != "" && steam.IsGameDir(dir) {
 		s.GameFound = true
 		s.Game = steam.ReadGameInfo(dir)
-		ok, err := gameinfo.Status(dir)
-		s.GameinfoOK = ok
+		r, err := gameinfo.Status(dir)
+		s.Gameinfo = r
+		if a.modsOffLocked() {
+			s.GameinfoOK = err == nil && !r.Addons
+		} else {
+			s.GameinfoOK = r.Patched()
+		}
 		if err != nil {
 			s.GameinfoErr = err.Error()
 		}

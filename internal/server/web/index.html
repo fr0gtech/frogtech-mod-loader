@@ -52,6 +52,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 20px 64px; }
 #titlebar .drag { flex: 1; min-width: 24px; }
 #titlebar .acts { display: flex; align-items: center; gap: 10px; padding-right: 8px; }
 #titlebar .acts button.play { padding: 6px 14px; font-size: 14px; }
+#titlebar .mswitch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ash); white-space: nowrap; cursor: pointer; }
+#titlebar .mswitch.off { color: var(--brass); }
 nav.tabs { display: flex; gap: 2px; align-items: stretch; }
 nav.tabs button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 12px; color: var(--ash); font: 500 15px var(--sans); cursor: pointer; }
 nav.tabs button:hover:not(:disabled) { color: var(--text); background: none; }
@@ -139,6 +141,7 @@ button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px
 .banner .t { font-weight: 600; }
 .banner .d { color: var(--ash); font-size: 14px; }
 .banner .acts { display: flex; gap: 8px; flex: none; }
+.banner .quote { color: var(--text); font-family: ui-monospace, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
 .frows { margin-top: 6px; }
 .frow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
 .frow:first-child { border-top: none; }
@@ -308,6 +311,9 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
   <div class="drag"></div>
   <div class="acts">
     <span id="busy" class="ash hidden" style="font-size:13px;display:inline-flex;gap:8px;align-items:center;white-space:nowrap"></span>
+    <label class="mswitch" id="modsSwitch" title="Turn all mods on or off. Off means Deadlock starts as if no mods were installed; your mods are kept.">
+      <span id="modsSwitchLabel">Mods on</span>
+      <span class="switch"><input type="checkbox" id="modsOn" aria-label="Mods on" checked><span></span></span></label>
     <button class="primary play" id="play"></button>
   </div>
   <div class="wctl">
@@ -710,10 +716,15 @@ function render() {
   $("busy").replaceChildren(); $("busy").classList.toggle("hidden", !S.busy);
   if (S.busy) $("busy").append(h("span", { class: "spin" }), S.busy);
   $("modCount").textContent = S.mods.length ? String(S.mods.length) : "";
+  if (document.activeElement !== $("modsOn")) $("modsOn").checked = S.modsOn;
+  $("modsSwitchLabel").textContent = S.modsOn ? "Mods on" : "Mods off";
+  $("modsSwitch").classList.toggle("off", !S.modsOn);
+  $("modsOn").disabled = !!S.repair;
 
   $("banners").replaceChildren();
   if (!S.gameFound) banner("bad", "Couldn't find Deadlock", "Choose the game folder in Settings.", h("button", { class: "outline sm", onclick: () => setTab("settings") }, "Open Settings"));
-  if (S.gameRunning) banner("info", "Deadlock is running", "Changes go into the game when you close it.");
+  renderStartBanners();
+  if (S.gameRunning && !S.noModsRun) banner("info", "Deadlock is running", "Changes go into the game when you close it.");
   const n = S.unknownPaks.length;
   if (n) banner("warn", "Found " + plural(n, "mod file") + " the loader didn't install", h("div", { class: "frows" }, foreignDetails().map(foreignRow)));
   if (S.dmm) banner("warn", "Deadlock Mod Manager is managing mods too", "Use one mod manager at a time, or they'll overwrite each other's files.");
@@ -733,6 +744,8 @@ function render() {
   // Settings: the plain status up top, details under Advanced.
   const st = $("gameStatus"); st.replaceChildren();
   if (!S.gameFound) st.append(h("span", { style: "color:var(--bad)" }, "Deadlock wasn't found. Choose its folder below."));
+  else if (!S.modsOn) st.append(h("span", { style: "color:var(--brass)" }, "All mods are off. Deadlock starts without them."), h("button", { class: "primary sm", onclick: () => setModsOn(true) }, "Turn mods on"));
+  else if (S.repair || S.noModsRun) st.append(h("span", { class: "ash" }, S.repair ? "Repairing Deadlock: mods are out until Steam is done." : "Deadlock is running without mods this time."));
   else if (S.gameinfoOk) st.append(h("span", { class: "badge-ok" }, icon("check"), "Mods are switched on in Deadlock"), S.game.clientVersion ? h("span", { class: "ash" }, "· game version ", h("span", { class: "brass" }, S.game.clientVersion)) : null);
   else st.append(h("span", { style: "color:var(--brass)" }, "Mods are switched off in Deadlock"), h("button", { class: "primary sm", onclick: () => quiet(act("fix-gameinfo", {}, "Mods switched on")) }, "Switch on"));
   const kv = $("gamekv"); kv.replaceChildren();
@@ -744,7 +757,9 @@ function render() {
   add("Game folder", h("span", { class: "path" }, S.game.dir || "not set"));
   if (S.gameFound) {
     add("Game version", (S.game.clientVersion || "?") + " · Steam build " + (S.game.buildId || "?"));
-    add("gameinfo.gi", S.gameinfoOk ? "has the citadel/addons search path" : (S.gameinfoErr || "citadel/addons search path missing"));
+    const gi = S.gameinfo || {}, miss = gi.missingWrite || [];
+    add("gameinfo.gi", S.gameinfoErr || ((gi.addons ? "has the citadel/addons search path" : "Valve's own: no citadel/addons search path") +
+      (gi.addons && miss.length ? "; missing " + miss.join(", ") : gi.addons ? " and the game's Mod/Write paths" : "")));
     add("Mods folder", h("span", { class: "path" }, S.addonsDir));
   }
   add("Data folder", h("span", { class: "path" }, S.dataDir));
@@ -873,6 +888,45 @@ async function removeMods(ids) {
 
 // ---- files in the mods folder that the loader didn't write ----
 // Usually a dev script or another manager copied a pak over one of ours.
+// "Deadlock didn't start", the repair in progress, a start without mods, mods off.
+function renderStartBanners() {
+  if (S.repair) banner("info", "Repairing Deadlock",
+    S.repair.checking ? "Steam is checking the game files. Your mods go back in when it's done."
+      : "Waiting for Steam to check the game files. If Steam asks you something, answer it there. Your mods go back in when it's done.",
+    h("button", { class: "outline sm", title: "Put your mods back now, without waiting for Steam", onclick: () => quiet(act("repair/finish", {}, "Mods are back")) }, "Skip waiting"));
+  if (S.noModsRun) banner("info", "Deadlock is starting without mods", "Your mods come back when you close the game.");
+  const f = S.startFail;
+  if (f && !S.repair) {
+    const lines = [];
+    if (f.message) lines.push(h("div", {}, "The game stopped with this error" + (f.time ? " (" + changedWhen(f.time) + ")" : "") + ": ", h("span", { class: "quote" }, f.message)));
+    if (f.corrupt) lines.push(h("div", {}, f.message ? "Steam now thinks some game files are damaged." : "Steam says some of Deadlock's files are damaged."));
+    lines.push(h("div", {}, f.withoutMods ? "It happened without mods too, so mods aren't the cause. Repair has Steam check the game files."
+      : "Repair takes your mods out, has Steam check the game files, then puts your mods back."));
+    const btns = [h("button", { class: "primary sm", onclick: repairGame }, "Repair")];
+    if (!f.withoutMods) btns.push(h("button", { class: "outline sm", title: "Start Deadlock once with no mods, to see if a mod is the cause", onclick: playWithoutMods }, "Start without mods"));
+    btns.push(h("button", { class: "ghost sm", onclick: () => quiet(act("start-fail/dismiss", {})) }, "Dismiss"));
+    const title = f.withoutMods ? "Deadlock didn't start, even without mods" : f.message || !f.corrupt ? "Deadlock didn't start" : "Steam says Deadlock's files are damaged";
+    banner("bad", title, h("div", {}, lines), ...btns);
+  }
+  if (!S.modsOn && !S.repair) banner("info", "Mods are off", "Deadlock starts without any mods. Your mods are kept for when you turn them back on.",
+    h("button", { class: "primary sm", onclick: () => setModsOn(true) }, "Turn mods on"));
+}
+async function repairGame() {
+  if (S.gameRunning) { toast("Close Deadlock first.", "error"); return; }
+  if (await ask({ title: "Repair Deadlock?", ok: "Repair",
+    body: "The loader takes your mods out of the game and asks Steam to check Deadlock's files. That can take a few minutes. When Steam is done, the loader puts your mods back." }))
+    quiet(act("repair", {}, "Steam is checking Deadlock's files"));
+}
+async function playWithoutMods() {
+  if (await ask({ key: "playWithoutMods", title: "Start without mods?", ok: "Start without mods",
+    body: "Deadlock starts once with no mods, so you can see whether a mod is the cause. Your mods come back when you close the game." }))
+    quiet(act("play-without-mods", {}, "Starting Deadlock without mods…"));
+}
+async function setModsOn(on) {
+  try { await act("mods/switch", { enabled: on }, on ? "Mods are on" : "Mods are off"); }
+  catch (e) { $("modsOn").checked = S.modsOn; }
+}
+
 function foreignDetails() {
   return (S.unknownDetails && S.unknownDetails.length) ? S.unknownDetails : S.unknownPaks.map((name) => ({ name }));
 }
@@ -1461,6 +1515,7 @@ $("play").addEventListener("click", async () => {
   } finally { refresh(); }
 });
 $("applyBtn").addEventListener("click", () => quiet(act("apply", {}, "Changes applied")));
+$("modsOn").addEventListener("change", () => setModsOn($("modsOn").checked));
 $("checkBtn").addEventListener("click", (e) => checkNow(e.currentTarget));
 $("openAddons").addEventListener("click", () => quiet(act("open-folder", {})));
 $("openData").addEventListener("click", () => quiet(act("open-folder", { id: "data" })));
