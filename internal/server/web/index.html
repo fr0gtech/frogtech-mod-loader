@@ -409,6 +409,18 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
           <button class="outline sm" id="resetAsk">Ask me again</button></div>
       </div>
     </div>
+    <div class="card" id="alertCard">
+      <div class="head"><h2>Match alerts</h2></div>
+      <div>
+        <div class="setting"><div class="main">Alert me when a match is found<div class="h">Flashes Deadlock in the taskbar and shows a notification when a match is found while you're in another window.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="queueAlert" aria-label="Alert me when a match is found"><span></span></label></div>
+        <div id="alertLog" class="banner warn hidden"><div class="grow"><div class="t">Deadlock isn't writing its log</div>
+          <div class="d">So the loader can't see when a match is found. Add <span class="quote">-condebug</span> to Deadlock's launch options in Steam, then restart the game. <a href="#" id="alertHow">How to add it</a></div></div>
+          <div class="acts"><button class="outline sm" id="alertCopy">Copy -condebug</button></div></div>
+        <div class="setting"><div class="main">Phone<div class="h" id="alertPhoneHint">Get the alert on your phone too.</div></div>
+          <span class="row"><button class="ghost sm hidden" id="alertTest">Send a test alert</button><button class="ghost sm hidden" id="alertUnlink">Unlink phones</button><button class="outline sm" id="alertLink">Link my phone</button></span></div>
+      </div>
+    </div>
     <div class="card">
       <details class="adv">
         <summary><span id="advIcon"></span><h2>Advanced</h2></summary>
@@ -765,6 +777,7 @@ function render() {
   add("Data folder", h("span", { class: "path" }, S.dataDir));
   if (!dirTouched && document.activeElement !== $("gameDir")) $("gameDir").value = S.game.dir || "";
   for (const el of document.querySelectorAll("[data-setting]")) el.checked = !!S.settings[el.dataset.setting];
+  $("alertLog").classList.toggle("hidden", !(S.queueLogMissing && S.settings.queueAlert));
   const nAsk = Object.keys(S.settings.dontAsk || {}).length;
   $("dontAskHint").textContent = nAsk ? "You told the loader not to ask " + plural(nAsk, "question") + " again." : "The loader asks before it removes or deletes anything.";
   $("resetAsk").disabled = !nAsk;
@@ -1537,6 +1550,47 @@ for (const el of document.querySelectorAll("[data-setting]")) {
     if (el.dataset.setting === "showMature") document.querySelectorAll(".tile .thumb").forEach((t) => t.classList.toggle("blur", !el.checked && !!t.querySelector(".tag")));
   });
 }
+
+// ---- match alerts ----
+const ALERT_GUIDE = "https://mods.frogtech.dev/guides/deadlock-match-found-notification";
+let alertPhones = 0;
+function renderPhones() {
+  $("alertPhoneHint").textContent = alertPhones ? plural(alertPhones, "phone") + " linked." : "Get the alert on your phone too.";
+  $("alertTest").classList.toggle("hidden", !alertPhones);
+  $("alertUnlink").classList.toggle("hidden", !alertPhones);
+  $("alertLink").textContent = alertPhones ? "Link another phone" : "Link my phone";
+}
+async function loadPhones() {
+  try { alertPhones = (await api("alert/phones")).phones || 0; } catch (e) { /* offline: keep what we had */ }
+  renderPhones();
+}
+$("alertHow").addEventListener("click", (e) => { e.preventDefault(); openExternal(ALERT_GUIDE); });
+$("alertCopy").addEventListener("click", () => {
+  navigator.clipboard.writeText("-condebug").then(() => toast("Copied -condebug", "ok"), () => toast("Couldn't copy. Type -condebug instead.", "error"));
+});
+$("alertLink").addEventListener("click", async () => {
+  let url;
+  try { url = (await api("alert/link", {})).url; } catch (e) { toast(e.message, "error"); return; }
+  const box = h("div", { class: "box small", role: "dialog", "aria-modal": "true" },
+    h("h3", {}, "Link your phone"),
+    h("div", { class: "body" },
+      h("p", {}, "Scan this with your phone's camera and turn on alerts on the page that opens."),
+      h("img", { src: "/api/alert/qr.png?v=" + Date.now(), alt: "QR code of your phone link", width: 232, height: 232, style: "display:block;margin:14px auto;background:#fff;border-radius:8px;image-rendering:pixelated" }),
+      h("p", {}, "Or open this link on your phone:"),
+      h("div", { class: "quote", style: "user-select:all;overflow-wrap:anywhere;font-family:ui-monospace,Consolas,monospace;font-size:13px;color:var(--text)" }, url),
+      h("p", { style: "margin-top:12px" }, "On iPhone, add the page to your Home Screen first: Safari only allows alerts from there.")),
+    h("div", { class: "actions" }, h("span", { class: "grow" }), h("button", { class: "primary", onclick: () => entry.close() }, "Done")));
+  const entry = openModal(box, loadPhones);
+  box.append(xButton(entry.close));
+});
+$("alertTest").addEventListener("click", () => quiet(act("alert/test", {}, "Test alert sent")));
+$("alertUnlink").addEventListener("click", async () => {
+  if (!await ask({ title: "Unlink your phones?", ok: "Unlink", danger: true,
+    body: "They stop getting match alerts. To get them again, link each phone with a new code." })) return;
+  try { await act("alert/unlink", {}, "Phones unlinked"); } catch (e) { return; }
+  alertPhones = 0; renderPhones();
+});
+loadPhones();
 
 // ---- the frog's eyes follow the mouse (same maths as the site's Frog.svelte) ----
 (() => {
