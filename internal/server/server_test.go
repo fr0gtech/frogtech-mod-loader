@@ -85,3 +85,15 @@ func testApp(t *testing.T) *app.App {
 	a.SetToken("secret-token-0123456789abcdef0123")
 	return a
 }
+
+func TestQRRoute(t *testing.T) {
+	a := testApp(t)
+	r := httptest.NewRequest("GET", "/api/alert/qr.png", nil)
+	r.Host = "127.0.0.1:47621"
+	r.Header.Set("X-Frog-Token", a.Token())
+	w := httptest.NewRecorder()
+	routes(a).ServeHTTP(w, r)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !strings.HasPrefix(w.Body.String(), "\x89PNG") {
+		t.Fatalf("qr.png: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+}

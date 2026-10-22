@@ -8,6 +8,7 @@ require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/wailsapp/go-webview2 v1.0.23
 	golang.org/x/sys v0.30.0
+	rsc.io/qr v0.2.0
 )
 
 require (

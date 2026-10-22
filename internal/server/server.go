@@ -31,6 +31,8 @@ import (
 	"github.com/fr0gtech/frogtech-mod-loader/internal/platform"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/steam"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/winui"
+
+	"rsc.io/qr"
 )
 
 // The page and its font (Jost, SIL OFL 1.1; the license text is in
@@ -328,6 +330,40 @@ func routes(a *app.App) http.Handler {
 	api.HandleFunc("POST /api/dmm/remove-leftover", jsonOp(func(r *http.Request, b body) error {
 		return a.RemoveDMMLeftover()
 	}))
+	api.HandleFunc("POST /api/alert/link", func(w http.ResponseWriter, r *http.Request) {
+		link, err := a.AlertLink()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]string{"url": link})
+	})
+	api.HandleFunc("GET /api/alert/qr.png", func(w http.ResponseWriter, r *http.Request) {
+		link, err := a.AlertLink()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		code, err := qr.Encode(link, qr.M)
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		code.Scale = 8
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(code.PNG())
+	})
+	api.HandleFunc("GET /api/alert/phones", func(w http.ResponseWriter, r *http.Request) {
+		n, err := a.AlertPhones(r.Context())
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]int{"phones": n})
+	})
+	api.HandleFunc("POST /api/alert/test", jsonOp(func(r *http.Request, b body) error { return a.AlertTest(r.Context()) }))
+	api.HandleFunc("POST /api/alert/unlink", jsonOp(func(r *http.Request, b body) error { return a.AlertUnlink(r.Context()) }))
 	api.HandleFunc("POST /api/apply", jsonOp(func(r *http.Request, b body) error { return a.Apply() }))
 	api.HandleFunc("POST /api/import", jsonOp(func(r *http.Request, b body) error { return a.ImportUnknown() }))
 	api.HandleFunc("POST /api/fix-gameinfo", jsonOp(func(r *http.Request, b body) error { _, err := a.EnsureGameinfo(); return err }))
