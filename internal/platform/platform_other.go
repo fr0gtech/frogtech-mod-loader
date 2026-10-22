@@ -10,6 +10,10 @@ import (
 
 func IsGameRunning() bool { return false }
 
+func FlashGameWindow() bool { return false }
+
+func GameIsForeground() bool { return false }
+
 func OpenURL(url string) error { return exec.Command("xdg-open", url).Start() }
 
 func OpenFolder(dir string) error { return exec.Command("xdg-open", dir).Start() }

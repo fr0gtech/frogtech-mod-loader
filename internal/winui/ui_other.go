@@ -22,3 +22,5 @@ func QuitUI() {}
 
 // notify shows a desktop notification; on Linux (development) it only logs.
 func Notify(title, msg, nav string) { log.Printf("notification: %s: %s", title, msg) }
+
+func NotifyAlert(title, msg string) { log.Printf("notification: %s: %s", title, msg) }

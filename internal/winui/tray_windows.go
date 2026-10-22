@@ -225,9 +225,15 @@ func showTrayMenu(hwnd uintptr, a Host) {
 	}
 }
 
-// notify shows a Windows notification from the tray icon. nav says where a
+// Notify shows a Windows notification from the tray icon. nav says where a
 // click on it leads ("updates" or ""). Safe from any goroutine.
-func Notify(title, msg, nav string) {
+func Notify(title, msg, nav string) { notify(title, msg, nav, niifInfo|niifRespectQuiet) }
+
+// NotifyAlert is a notification that can't wait: shown in quiet hours too, with
+// its sound (Windows' Do Not Disturb still holds it back).
+func NotifyAlert(title, msg string) { notify(title, msg, "", niifInfo) }
+
+func notify(title, msg, nav string, flags uint32) {
 	log.Printf("notification: %s: %s", title, msg)
 	tray.mu.Lock()
 	hwnd := tray.hwnd
@@ -241,7 +247,7 @@ func Notify(title, msg, nav string) {
 		tray.nav = nav
 		n := tray.nid
 		n.Flags = nifInfo
-		n.InfoFlags = niifInfo | niifRespectQuiet
+		n.InfoFlags = flags
 		setUTF16(n.InfoTitle[:], title)
 		setUTF16(n.Info[:], msg)
 		pShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&n)))

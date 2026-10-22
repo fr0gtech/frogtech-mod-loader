@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/fr0gtech/frogtech-mod-loader/internal/links"
@@ -20,20 +21,99 @@ const (
 )
 
 // IsGameRunning looks for deadlock.exe with a Toolhelp process snapshot.
-func IsGameRunning() bool {
+func IsGameRunning() bool { return len(gamePIDs()) > 0 }
+
+// gamePIDs lists the process ids of deadlock.exe.
+func gamePIDs() map[uint32]bool {
+	pids := map[uint32]bool{}
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
-		return false
+		return pids
 	}
 	defer windows.CloseHandle(snap)
 	var pe windows.ProcessEntry32
 	pe.Size = uint32(unsafe.Sizeof(pe))
 	for err = windows.Process32First(snap, &pe); err == nil; err = windows.Process32Next(snap, &pe) {
 		if strings.EqualFold(windows.UTF16ToString(pe.ExeFile[:]), "deadlock.exe") {
-			return true
+			pids[pe.ProcessID] = true
 		}
 	}
-	return false
+	return pids
+}
+
+var (
+	user32          = windows.NewLazySystemDLL("user32.dll")
+	pFlashWindowEx  = user32.NewProc("FlashWindowEx")
+	pGetWindow      = user32.NewProc("GetWindow")
+	enumGameWindows = windows.NewCallback(func(hwnd windows.HWND, _ uintptr) uintptr {
+		f := &search
+		var pid uint32
+		windows.GetWindowThreadProcessId(hwnd, &pid)
+		if f.pids[pid] && windows.IsWindowVisible(hwnd) {
+			if owner, _, _ := pGetWindow.Call(uintptr(hwnd), gwOwner); owner == 0 {
+				f.found = hwnd
+				return 0 // stop
+			}
+		}
+		return 1
+	})
+)
+
+const gwOwner = 4
+
+// search is what enumGameWindows looks for and found (searchMu held).
+var (
+	searchMu sync.Mutex
+	search   struct {
+		pids  map[uint32]bool
+		found windows.HWND
+	}
+)
+
+// gameWindow is Deadlock's main window, or 0.
+func gameWindow() windows.HWND {
+	pids := gamePIDs()
+	if len(pids) == 0 {
+		return 0
+	}
+	searchMu.Lock()
+	defer searchMu.Unlock()
+	search.pids, search.found = pids, 0
+	windows.EnumWindows(enumGameWindows, nil) // "fails" when the callback stops it
+	return search.found
+}
+
+type flashWInfo struct {
+	Size    uint32
+	Hwnd    windows.HWND
+	Flags   uint32
+	Count   uint32
+	Timeout uint32
+}
+
+// FlashGameWindow flashes Deadlock's taskbar button until the player switches
+// to the game. False when the game window isn't there.
+func FlashGameWindow() bool {
+	h := gameWindow()
+	if h == 0 {
+		return false
+	}
+	const flashAll, flashTimerNoFG = 0x3, 0xC
+	fi := flashWInfo{Hwnd: h, Flags: flashAll | flashTimerNoFG}
+	fi.Size = uint32(unsafe.Sizeof(fi))
+	pFlashWindowEx.Call(uintptr(unsafe.Pointer(&fi)))
+	return true
+}
+
+// GameIsForeground says whether the player is looking at Deadlock right now.
+func GameIsForeground() bool {
+	h := windows.GetForegroundWindow()
+	if h == 0 {
+		return false
+	}
+	var pid uint32
+	windows.GetWindowThreadProcessId(h, &pid)
+	return pid != 0 && gamePIDs()[pid]
 }
 
 // OpenURL opens an http(s) or steam:// link with the default handler.
