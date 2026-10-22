@@ -141,7 +141,7 @@ button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px
 .banner .t { font-weight: 600; }
 .banner .d { color: var(--ash); font-size: 14px; }
 .banner .acts { display: flex; gap: 8px; flex: none; }
-.banner .quote { color: var(--text); font-family: ui-monospace, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.banner .quote, .setting .h .quote { color: var(--text); font-family: ui-monospace, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
 .frows { margin-top: 6px; }
 .frow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
 .frow:first-child { border-top: none; }
@@ -412,7 +412,7 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
     <div class="card" id="alertCard">
       <div class="head"><h2>Match alerts</h2></div>
       <div>
-        <div class="setting"><div class="main">Alert me when a match is found<div class="h">Flashes Deadlock in the taskbar and shows a notification when a match is found while you're in another window.</div></div>
+        <div class="setting"><div class="main">Alert me when a match is found<div class="h">Flashes Deadlock in the taskbar and shows a notification when a match is found while you're in another window. Needs Deadlock's <span class="quote">-condebug</span> launch option. <a href="#" id="alertHowHint">How</a></div></div>
           <label class="switch"><input type="checkbox" data-setting="queueAlert" aria-label="Alert me when a match is found"><span></span></label></div>
         <div id="alertLog" class="banner warn hidden"><div class="grow"><div class="t">Deadlock isn't writing its log</div>
           <div class="d">So the loader can't see when a match is found. Add <span class="quote">-condebug</span> to Deadlock's launch options in Steam, then restart the game. <a href="#" id="alertHow">How to add it</a></div></div>
@@ -1564,7 +1564,7 @@ async function loadPhones() {
   try { alertPhones = (await api("alert/phones")).phones || 0; } catch (e) { /* offline: keep what we had */ }
   renderPhones();
 }
-$("alertHow").addEventListener("click", (e) => { e.preventDefault(); openExternal(ALERT_GUIDE); });
+for (const id of ["alertHow", "alertHowHint"]) $(id).addEventListener("click", (e) => { e.preventDefault(); openExternal(ALERT_GUIDE); });
 $("alertCopy").addEventListener("click", () => {
   navigator.clipboard.writeText("-condebug").then(() => toast("Copied -condebug", "ok"), () => toast("Couldn't copy. Type -condebug instead.", "error"));
 });

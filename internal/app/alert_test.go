@@ -293,3 +293,28 @@ func TestAlertTest429(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestOnMatchForegroundStillSendsPhone(t *testing.T) {
+	f := newFakeAlert(t)
+	f.foreground = true
+	site := newFakeSite(t)
+	a := testApp(t)
+	a.AlertLink()
+	a.onMatch("1")
+	deadline := time.Now().Add(2 * time.Second)
+	for len(site.got()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if b := site.got(); len(b) != 1 || b[0]["send"] != "match" {
+		t.Fatalf("with Deadlock in front the phone got %v, want one send:match", b)
+	}
+}
+
+func TestAlertKeyUnreadableMakesNewOne(t *testing.T) {
+	a := testApp(t)
+	a.state.AlertKey = "not a sealed key!"
+	link, err := a.AlertLink()
+	if err != nil || !linkRE.MatchString(link) {
+		t.Fatalf("AlertLink with an unreadable key = %q, %v; want a new link", link, err)
+	}
+}

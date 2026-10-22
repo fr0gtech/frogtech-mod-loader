@@ -54,14 +54,15 @@ type Result struct {
 
 // Watcher follows console.log while the game runs. Not safe for concurrent use.
 type Watcher struct {
-	path       string
-	running    bool // the game ran at the last poll
-	offset     int64
-	partial    []byte // the last line read, still without its newline
-	seenAt     time.Time
-	modAtStart time.Time
-	lastAlert  time.Time
-	lastID     string
+	path        string
+	running     bool // the game ran at the last poll
+	offset      int64
+	partial     []byte // the last line read, still without its newline
+	seenAt      time.Time
+	modAtStart  time.Time // the log's time and size when the game was first seen
+	sizeAtStart int64
+	lastAlert   time.Time
+	lastID      string
 }
 
 func NewWatcher(path string) *Watcher { return &Watcher{path: path} }
@@ -77,14 +78,16 @@ func (w *Watcher) Poll(running bool, now time.Time) Result {
 	if !w.running {
 		// the game (or the loader) just started: what is in the log is old
 		w.running, w.seenAt, w.partial = true, now, nil
-		w.offset, w.modAtStart = 0, time.Time{}
+		w.offset, w.modAtStart, w.sizeAtStart = 0, time.Time{}, -1
 		if err == nil {
-			w.offset, w.modAtStart = st.Size(), st.ModTime()
+			w.offset, w.modAtStart, w.sizeAtStart = st.Size(), st.ModTime(), st.Size()
 		}
 		return Result{}
 	}
 	var r Result
-	if err != nil || st.ModTime().Equal(w.modAtStart) {
+	// unchanged since the game started (the size counts too: Windows may not move
+	// the time while the game keeps the log open)
+	if err != nil || (st.ModTime().Equal(w.modAtStart) && st.Size() == w.sizeAtStart) {
 		r.LogMissing = now.Sub(w.seenAt) >= logMissingAfter
 		return r
 	}

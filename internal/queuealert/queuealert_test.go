@@ -181,3 +181,17 @@ func TestPollNotRunningResets(t *testing.T) {
 		t.Fatalf("first poll of a new run = %+v, want no Match", r)
 	}
 }
+
+// Windows may not move the modification time while the game keeps the log
+// open: a grown file is read anyway, and it counts as written.
+func TestPollGrowsWithoutModTime(t *testing.T) {
+	l := newLog(t, "")
+	w := NewWatcher(l.path)
+	w.Poll(true, t0)
+	mod := l.mod
+	l.append("10/22 09:00:01 Lobby 1 for Match 42 created\n")
+	os.Chtimes(l.path, mod, mod)
+	if r := w.Poll(true, t0.Add(61*time.Second)); !r.Match || r.MatchID != "42" || r.LogMissing {
+		t.Fatalf("grown log with an unchanged time = %+v, want Match 42 and no LogMissing", r)
+	}
+}

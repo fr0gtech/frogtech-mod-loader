@@ -101,16 +101,18 @@ func (a *App) setQueueLogMissing(v bool) {
 	a.mu.Unlock()
 }
 
-// onMatch tells the player their match was found, unless they're looking at the game.
+// onMatch tells the player their match was found: linked phones always, the PC
+// unless they're looking at the game.
 func (a *App) onMatch(id string) {
+	// phones always: a player who queued and walked away often left the game in front
+	go a.sendPhone("match")
 	if gameForeground() {
-		log.Printf("match %s found (Deadlock in front: no alert)", id)
+		log.Printf("match %s found (Deadlock in front: no PC alert)", id)
 		return
 	}
 	log.Printf("match %s found: alerting", id)
 	flashGame()
 	alertNotify("Match found", "Your Deadlock match is loading.")
-	go a.sendPhone("match")
 }
 
 // alertKey returns the phone link key, making one when create is set ("" without).
@@ -118,7 +120,13 @@ func (a *App) alertKey(create bool) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.state.AlertKey != "" {
-		return secrets.Open(a.state.AlertKey)
+		key, err := secrets.Open(a.state.AlertKey)
+		if err == nil {
+			return key, nil
+		}
+		// sealed for another Windows user or PC (state.json copied over): start over
+		log.Printf("phone link key unreadable (%v): making a new one", err)
+		a.state.AlertKey = ""
 	}
 	if !create {
 		return "", nil
