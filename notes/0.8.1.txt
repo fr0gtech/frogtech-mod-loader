@@ -1,0 +1,2 @@
+Match alerts can only be switched on when Deadlock's launch options in Steam have -condebug; the loader checks and shows how to add it
+Choose what a match alert does: flash Deadlock in the taskbar, a Windows notification, your phones
