@@ -1,0 +1,21 @@
+10/22 08:55:26 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:26 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:27 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:27 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:28 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:28 C_BasePlayerPawn::OnPostPredictionError( ) visual prediction distance 0.000 - teleporting
+10/22 08:55:31 [GCClient] Recv msg 9100 (k_EMsgGCToClientSDRTicket), 254 bytes
+10/22 08:55:31 [SteamNetSockets] Received Steam datagram ticket for server steamid:90295508112291859 vport -1. match_id=122156222
+10/22 08:55:31 [GCClient] Recv msg 24 (k_ESOMsg_CacheSubscribed), 42 bytes
+10/22 08:55:31 [GCClient] Recv msg 24 (k_ESOMsg_CacheSubscribed), 91 bytes
+10/22 08:55:31 Lobby 174190353002534699 for Match 122156222 created
+10/22 08:55:31 [GCClient] Recv msg 26 (k_ESOMsg_UpdateMultiple), 82 bytes
+10/22 08:55:31 Persisting reconnect info to disk: server_steam_id: 90295508112291859 lobby_id: 174190353002534699 time_updated: 1792652131 udp_connect_ip: 0 udp_connect_port: 0 compatibility_version: 6813
+10/22 08:55:31 CCitadelClientGCSystem::ConnectToAddress( =[A:1:1171830803:52041] )
+10/22 08:55:31 [Citadel Client Networking] Steam datagram ticket found to connect to '=[A:1:1171830803:52041]'
+10/22 08:55:31 [HostStateManager] CHostStateMgr::QueueNewRequest( Remote Connect (=[A:1:1171830803:52041]), 3 )
+10/22 08:55:31 [Citadel Play Controller] CCitadel_PlayController::OnMatchFormed
+10/22 08:55:31 Telling Steam not to update the app for the next 300 seconds
+10/22 08:55:31 [HostStateManager] HostStateRequest::Start(HSR_GAME):  loop(remoteconnect) id(3) addons() desc(Remote Connect (=[A:1:1171830803:52041]))
+10/22 08:55:31 [EngineServiceManager] SwitchToLoop remoteconnect requested:  id [3] addons []
+10/22 08:55:31 [Client] CL:  AsyncUnloadSpawnGroup( 0 ) -- no such spawn group
