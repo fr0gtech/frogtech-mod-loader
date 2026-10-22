@@ -29,10 +29,12 @@ const (
 	retryInterval    = 5 * time.Minute
 )
 
-// RunBackground runs the gameinfo watcher and the update checker until quit.
+// RunBackground runs the gameinfo watcher, the update checker and the match
+// alert until quit.
 func (a *App) RunBackground() {
 	go a.watchGameinfo()
 	go a.updateLoop()
+	go a.watchQueue()
 }
 
 // watchGameinfo re-adds the addons line every few seconds (game updates reset

@@ -67,18 +67,20 @@ type statusView struct {
 	PendingApply   bool              `json:"pendingApply"`
 	AppliedOnce    bool              `json:"appliedOnce"`
 	Settings       mods.Settings     `json:"settings"`
-	RunKey         bool              `json:"runKey"`
-	Mods           []modView         `json:"mods"`
-	Catalog        []catalogView     `json:"catalog"`
-	Repos          []repoView        `json:"repos"` // Frogtech first, then the user's repositories
-	CatalogErr     string            `json:"catalogErr,omitempty"`
-	LoaderUpdate   string            `json:"loaderUpdate,omitempty"`
-	LoaderNotes    []string          `json:"loaderNotes,omitempty"`
-	LastCheck      time.Time         `json:"lastCheck"`
-	LastErr        string            `json:"lastErr,omitempty"`
-	Busy           string            `json:"busy,omitempty"`
-	DataDir        string            `json:"dataDir"`
-	Log            []string          `json:"log"`
+	// QueueLogMissing: Deadlock runs without writing console.log (no -condebug)
+	QueueLogMissing bool          `json:"queueLogMissing"`
+	RunKey          bool          `json:"runKey"`
+	Mods            []modView     `json:"mods"`
+	Catalog         []catalogView `json:"catalog"`
+	Repos           []repoView    `json:"repos"` // Frogtech first, then the user's repositories
+	CatalogErr      string        `json:"catalogErr,omitempty"`
+	LoaderUpdate    string        `json:"loaderUpdate,omitempty"`
+	LoaderNotes     []string      `json:"loaderNotes,omitempty"`
+	LastCheck       time.Time     `json:"lastCheck"`
+	LastErr         string        `json:"lastErr,omitempty"`
+	Busy            string        `json:"busy,omitempty"`
+	DataDir         string        `json:"dataDir"`
+	Log             []string      `json:"log"`
 }
 
 // Status gathers everything the page shows.
@@ -102,6 +104,7 @@ func (a *App) Status() statusView {
 		LastCheck: a.lastCheck, LastErr: a.lastErr, Busy: a.busy, DataDir: a.dataDir, Log: logTail(),
 		UnknownPaks: []string{}, UnknownDetails: []mods.UnknownPak{}, Mods: []modView{}, Catalog: []catalogView{},
 		ModsOn: !a.state.ModsOff, StartFail: a.startFail, NoModsRun: a.state.NoModsRun != nil,
+		QueueLogMissing: a.queueLogMissing,
 	}
 	if r := a.state.Repair; r != nil {
 		s.Repair = &repairView{Started: r.Started, Checking: r.SawCheck}

@@ -91,6 +91,7 @@ func main() {
 	a.StopServer = server.Stop
 	a.StartServer = func() error { return server.Start(a) }
 	a.InitRunKey()
+	a.InitQueueAlert()
 	if exe, err := os.Executable(); err == nil {
 		if err := platform.RegisterProtocol(exe); err != nil {
 			log.Printf("frogmod:// registration: %v", err)

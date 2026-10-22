@@ -64,9 +64,11 @@ type App struct {
 	opMu     sync.Mutex // serializes operations that change files
 	checkNow chan struct{}
 	quit     chan struct{}
-	quitOnce sync.Once
-	baseURL  string
-	token    string
+	// queueLogMissing: the match alert sees no console.log being written
+	queueLogMissing bool
+	quitOnce        sync.Once
+	baseURL         string
+	token           string
 
 	// StopServer and StartServer let a self-update release the port before
 	// starting the new exe (and take it back if that fails). Set by main.
