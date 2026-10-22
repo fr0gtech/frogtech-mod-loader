@@ -16,13 +16,14 @@ Get it at **[mods.frogtech.dev/mod-loader](https://mods.frogtech.dev/mod-loader)
 - Turn mods on and off, and drag to choose which one wins when two change the same thing.
 - Add your own `.zip`, `.rar`, `.7z` or `.vpk` files, or install with one click from a website (`frogmod://` links).
 - Runs quietly in the tray and tells you when there's something new.
+- Tells you when Deadlock finds a match, on your PC and your phone, while you're in another window.
 
 ## Is it safe?
 
 It's open source, and every release is built by GitHub Actions from this code with a signed provenance attestation. Check a download with the [GitHub CLI](https://cli.github.com/):
 
 ```
-gh attestation verify FrogLoader_v0.7.0.zip --repo fr0gtech/frogtech-mod-loader
+gh attestation verify FrogLoader_v0.8.0.zip --repo fr0gtech/frogtech-mod-loader
 ```
 
 You can also compare it with `SHA256SUMS` on the release page. The exe isn't code-signed, so Windows may warn you the first time: choose **More info → Run anyway**.

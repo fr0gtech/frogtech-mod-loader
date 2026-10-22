@@ -1,0 +1,2 @@
+New: match alerts. The loader flashes Deadlock in the taskbar and shows a notification when a match is found while you're in another window (needs Deadlock's -condebug launch option)
+New: get the match alert on your phone too: Settings, Match alerts, Link my phone
