@@ -362,6 +362,7 @@ func routes(a *app.App) http.Handler {
 		}
 		writeJSON(w, map[string]int{"phones": n})
 	})
+	api.HandleFunc("POST /api/alert/recheck", jsonOp(func(r *http.Request, b body) error { a.AlertRecheck(); return nil }))
 	api.HandleFunc("POST /api/alert/test", jsonOp(func(r *http.Request, b body) error { return a.AlertTest(r.Context()) }))
 	api.HandleFunc("POST /api/alert/unlink", jsonOp(func(r *http.Request, b body) error { return a.AlertUnlink(r.Context()) }))
 	api.HandleFunc("POST /api/apply", jsonOp(func(r *http.Request, b body) error { return a.Apply() }))

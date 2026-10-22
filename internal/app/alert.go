@@ -31,6 +31,7 @@ var (
 	flashGame      = platform.FlashGameWindow
 	gameForeground = platform.GameIsForeground
 	alertNotify    = winui.NotifyAlert
+	launchOptions  = steam.LaunchOptions
 	queueInterval  = time.Second
 	// alertAPI sends match alerts to linked phones (frogtech-site: /api/alert)
 	alertAPI        = "https://mods.frogtech.dev/api/alert"
@@ -45,11 +46,14 @@ const alertPage = "https://mods.frogtech.dev/alert#"
 func (a *App) InitQueueAlert() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.state.QueueAlertInit {
-		return
+	if !a.state.QueueAlertInit {
+		a.state.QueueAlertInit = true
+		a.state.Settings.QueueAlert = true
 	}
-	a.state.QueueAlertInit = true
-	a.state.Settings.QueueAlert = true
+	if !a.state.AlertPartsInit {
+		a.state.AlertPartsInit = true
+		a.state.Settings.AlertFlash, a.state.Settings.AlertNotify, a.state.Settings.AlertPhone = true, true, true
+	}
 	a.saveLocked()
 }
 
@@ -75,11 +79,12 @@ func (a *App) watchQueue() {
 }
 
 // queueTick reads what the game wrote since the last tick and alerts on a match.
+// It reads while alerts are off too: a log being written proves -condebug.
 func (a *App) queueTick(q *queueWatch) {
 	a.mu.Lock()
 	on, dir := a.state.Settings.QueueAlert, a.state.GameDir
 	a.mu.Unlock()
-	if !on || dir == "" {
+	if dir == "" {
 		a.setQueueLogMissing(false)
 		q.w = nil
 		return
@@ -89,10 +94,40 @@ func (a *App) queueTick(q *queueWatch) {
 		q.path, q.w = path, queuealert.NewWatcher(path)
 	}
 	r := q.w.Poll(gameRunning(), now())
-	a.setQueueLogMissing(r.LogMissing)
-	if r.Match {
+	if r.Written {
+		a.mu.Lock()
+		a.logProven = true
+		a.mu.Unlock()
+	}
+	a.setQueueLogMissing(on && r.LogMissing)
+	if r.Match && on && a.condebugOK() {
 		a.onMatch(r.MatchID)
 	}
+}
+
+// condebugRefresh: how long Steam's launch options are trusted before reading them again
+const condebugRefresh = 10 * time.Second
+
+// condebugOK says whether Deadlock runs with -condebug: in its Steam launch
+// options, or seen writing its log.
+func (a *App) condebugOK() bool {
+	a.mu.Lock()
+	stale := a.condebugAt.IsZero() || now().Sub(a.condebugAt) > condebugRefresh
+	a.mu.Unlock()
+	if stale {
+		a.AlertRecheck()
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.condebugSteam || a.logProven
+}
+
+// AlertRecheck reads Deadlock's launch options in Steam again.
+func (a *App) AlertRecheck() {
+	opts, ok := launchOptions()
+	a.mu.Lock()
+	a.condebugSteam, a.condebugAt = ok && steam.HasCondebug(opts), now()
+	a.mu.Unlock()
 }
 
 func (a *App) setQueueLogMissing(v bool) {
@@ -104,15 +139,24 @@ func (a *App) setQueueLogMissing(v bool) {
 // onMatch tells the player their match was found: linked phones always, the PC
 // unless they're looking at the game.
 func (a *App) onMatch(id string) {
-	// phones always: a player who queued and walked away often left the game in front
-	go a.sendPhone("match")
+	a.mu.Lock()
+	st := a.state.Settings
+	a.mu.Unlock()
+	// phones even with the game in front: a player who queued and walked away often left it there
+	if st.AlertPhone {
+		go a.sendPhone("match")
+	}
 	if gameForeground() {
 		log.Printf("match %s found (Deadlock in front: no PC alert)", id)
 		return
 	}
 	log.Printf("match %s found: alerting", id)
-	flashGame()
-	alertNotify("Match found", "Your Deadlock match is loading.")
+	if st.AlertFlash {
+		flashGame()
+	}
+	if st.AlertNotify {
+		alertNotify("Match found", "Your Deadlock match is loading.")
+	}
 }
 
 // alertKey returns the phone link key, making one when create is set ("" without).

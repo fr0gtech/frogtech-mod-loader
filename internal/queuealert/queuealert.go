@@ -50,6 +50,7 @@ type Result struct {
 	Match      bool   // a match was found since the last poll
 	MatchID    string // its id, when the log said it
 	LogMissing bool   // the game runs but doesn't write console.log
+	Written    bool   // the game wrote console.log since it started (so -condebug is on)
 }
 
 // Watcher follows console.log while the game runs. Not safe for concurrent use.
@@ -91,6 +92,7 @@ func (w *Watcher) Poll(running bool, now time.Time) Result {
 		r.LogMissing = now.Sub(w.seenAt) >= logMissingAfter
 		return r
 	}
+	r.Written = true
 	if st.Size() < w.offset {
 		// a new session rewrote the log
 		w.offset, w.partial = 0, nil

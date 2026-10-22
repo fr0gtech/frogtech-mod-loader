@@ -26,6 +26,7 @@ type fakeAlert struct {
 
 func newFakeAlert(t *testing.T) *fakeAlert {
 	f := &fakeAlert{}
+	setLaunchOptions(t, "-condebug")
 	oldFlash, oldFG, oldNotify := flashGame, gameForeground, alertNotify
 	flashGame = func() bool { f.mu.Lock(); defer f.mu.Unlock(); f.flashes++; return true }
 	gameForeground = func() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.foreground }
@@ -64,6 +65,7 @@ func TestInitQueueAlertOnce(t *testing.T) {
 func TestOnMatchAlerts(t *testing.T) {
 	f := newFakeAlert(t)
 	a := testApp(t)
+	partsOn(a)
 	a.onMatch("122156222")
 	flashes, _ := f.counts()
 	if flashes != 1 {
@@ -113,6 +115,7 @@ func appendMatch(t *testing.T, log string) {
 func TestQueueTickAlerts(t *testing.T) {
 	f := newFakeAlert(t)
 	a := testApp(t)
+	partsOn(a)
 	a.state.Settings.QueueAlert = true
 	log, _ := queueGame(t, a)
 	q := &queueWatch{}
@@ -299,6 +302,7 @@ func TestOnMatchForegroundStillSendsPhone(t *testing.T) {
 	f.foreground = true
 	site := newFakeSite(t)
 	a := testApp(t)
+	partsOn(a)
 	a.AlertLink()
 	a.onMatch("1")
 	deadline := time.Now().Add(2 * time.Second)
@@ -317,4 +321,129 @@ func TestAlertKeyUnreadableMakesNewOne(t *testing.T) {
 	if err != nil || !linkRE.MatchString(link) {
 		t.Fatalf("AlertLink with an unreadable key = %q, %v; want a new link", link, err)
 	}
+}
+
+// setLaunchOptions fakes Deadlock's launch options in Steam.
+func setLaunchOptions(t *testing.T, opts string) {
+	old := launchOptions
+	launchOptions = func() (string, bool) { return opts, true }
+	t.Cleanup(func() { launchOptions = old })
+}
+
+func TestSetSettingsRefusesAlertWithoutCondebug(t *testing.T) {
+	newFakeAlert(t)
+	setLaunchOptions(t, "-novid")
+	a := testApp(t)
+	s := a.state.Settings
+	s.QueueAlert = true
+	err := a.SetSettings(s)
+	if err == nil || err.Error() != "Add -condebug to Deadlock's launch options in Steam first" {
+		t.Fatalf("SetSettings = %v, want the -condebug error", err)
+	}
+	if a.state.Settings.QueueAlert {
+		t.Fatal("QueueAlert saved without -condebug")
+	}
+}
+
+func TestSetSettingsAllowsAlertWithCondebug(t *testing.T) {
+	newFakeAlert(t)
+	a := testApp(t)
+	s := a.state.Settings
+	s.QueueAlert = true
+	if err := a.SetSettings(s); err != nil || !a.state.Settings.QueueAlert {
+		t.Fatalf("SetSettings with -condebug = %v, QueueAlert %v", err, a.state.Settings.QueueAlert)
+	}
+}
+
+func TestSetSettingsKeepsSavedAlertWithoutCondebug(t *testing.T) {
+	newFakeAlert(t)
+	a := testApp(t)
+	a.state.Settings.QueueAlert = true
+	setLaunchOptions(t, "")
+	s := a.state.Settings
+	s.ShowMature = true // another switch changed: the saved alert choice stays
+	if err := a.SetSettings(s); err != nil || !a.state.Settings.QueueAlert {
+		t.Fatalf("SetSettings = %v, QueueAlert %v; want nil and kept", err, a.state.Settings.QueueAlert)
+	}
+}
+
+func TestQueueTickNeedsCondebug(t *testing.T) {
+	f := newFakeAlert(t)
+	setLaunchOptions(t, "")
+	a := testApp(t)
+	partsOn(a)
+	a.state.Settings.QueueAlert = true
+	log, _ := queueGame(t, a)
+	q := &queueWatch{}
+	a.queueTick(q)
+	appendMatch(t, log)
+	// the log being written proves -condebug, so this match alerts
+	a.queueTick(q)
+	if !a.Status().Condebug {
+		t.Fatal("Condebug false although the game writes its log")
+	}
+	if flashes, _ := f.counts(); flashes != 1 {
+		t.Fatalf("flashes = %d, want 1", flashes)
+	}
+}
+
+func TestQueueTickNoAlertWhenOff(t *testing.T) {
+	f := newFakeAlert(t)
+	setLaunchOptions(t, "")
+	a := testApp(t)
+	a.state.Settings.QueueAlert = false
+	log, _ := queueGame(t, a)
+	q := &queueWatch{}
+	a.queueTick(q)
+	appendMatch(t, log)
+	a.queueTick(q)
+	if flashes, notes := f.counts(); flashes != 0 || notes != 0 {
+		t.Fatalf("alert off: %d flashes, %d notes", flashes, notes)
+	}
+	if !a.Status().Condebug {
+		t.Fatal("the watcher should still notice the log being written while alerts are off")
+	}
+}
+
+func TestStatusCondebugFromSteam(t *testing.T) {
+	newFakeAlert(t)
+	a := testApp(t)
+	if !a.Status().Condebug {
+		t.Fatal("Condebug false with -condebug in the launch options")
+	}
+	setLaunchOptions(t, "-novid")
+	a.AlertRecheck()
+	if a.Status().Condebug {
+		t.Fatal("Condebug true after it was removed and checked again")
+	}
+}
+
+func TestOnMatchParts(t *testing.T) {
+	f := newFakeAlert(t)
+	site := newFakeSite(t)
+	a := testApp(t)
+	a.InitQueueAlert()
+	a.AlertLink()
+	a.state.Settings.AlertFlash, a.state.Settings.AlertNotify, a.state.Settings.AlertPhone = false, true, false
+	a.onMatch("1")
+	time.Sleep(100 * time.Millisecond)
+	flashes, notes := f.counts()
+	if flashes != 0 || notes != 1 || len(site.got()) != 0 {
+		t.Fatalf("flash off, notify on, phone off: %d flashes, %d notes, %d phone sends", flashes, notes, len(site.got()))
+	}
+}
+
+func TestInitQueueAlertParts(t *testing.T) {
+	a := testApp(t)
+	a.state.QueueAlertInit = true // an install from 0.8.0
+	a.InitQueueAlert()
+	s := a.state.Settings
+	if !s.AlertFlash || !s.AlertNotify || !s.AlertPhone || !a.state.AlertPartsInit {
+		t.Fatalf("parts after init: %+v, partsInit %v; want all on once", s, a.state.AlertPartsInit)
+	}
+}
+
+// partsOn switches on flash, notification and phones (InitQueueAlert's defaults).
+func partsOn(a *App) {
+	a.state.Settings.AlertFlash, a.state.Settings.AlertNotify, a.state.Settings.AlertPhone = true, true, true
 }

@@ -68,19 +68,21 @@ type statusView struct {
 	AppliedOnce    bool              `json:"appliedOnce"`
 	Settings       mods.Settings     `json:"settings"`
 	// QueueLogMissing: Deadlock runs without writing console.log (no -condebug)
-	QueueLogMissing bool          `json:"queueLogMissing"`
-	RunKey          bool          `json:"runKey"`
-	Mods            []modView     `json:"mods"`
-	Catalog         []catalogView `json:"catalog"`
-	Repos           []repoView    `json:"repos"` // Frogtech first, then the user's repositories
-	CatalogErr      string        `json:"catalogErr,omitempty"`
-	LoaderUpdate    string        `json:"loaderUpdate,omitempty"`
-	LoaderNotes     []string      `json:"loaderNotes,omitempty"`
-	LastCheck       time.Time     `json:"lastCheck"`
-	LastErr         string        `json:"lastErr,omitempty"`
-	Busy            string        `json:"busy,omitempty"`
-	DataDir         string        `json:"dataDir"`
-	Log             []string      `json:"log"`
+	QueueLogMissing bool `json:"queueLogMissing"`
+	// Condebug: Deadlock runs with -condebug (Steam launch options or its log), needed for match alerts
+	Condebug     bool          `json:"condebug"`
+	RunKey       bool          `json:"runKey"`
+	Mods         []modView     `json:"mods"`
+	Catalog      []catalogView `json:"catalog"`
+	Repos        []repoView    `json:"repos"` // Frogtech first, then the user's repositories
+	CatalogErr   string        `json:"catalogErr,omitempty"`
+	LoaderUpdate string        `json:"loaderUpdate,omitempty"`
+	LoaderNotes  []string      `json:"loaderNotes,omitempty"`
+	LastCheck    time.Time     `json:"lastCheck"`
+	LastErr      string        `json:"lastErr,omitempty"`
+	Busy         string        `json:"busy,omitempty"`
+	DataDir      string        `json:"dataDir"`
+	Log          []string      `json:"log"`
 }
 
 // Status gathers everything the page shows.
@@ -95,6 +97,7 @@ func (a *App) Status() statusView {
 		loaderUp, loaderNotes = c.Loader.Version, c.Loader.Notes
 	}
 	running := gameRunning()
+	condebug := a.condebugOK()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -104,7 +107,7 @@ func (a *App) Status() statusView {
 		LastCheck: a.lastCheck, LastErr: a.lastErr, Busy: a.busy, DataDir: a.dataDir, Log: logTail(),
 		UnknownPaks: []string{}, UnknownDetails: []mods.UnknownPak{}, Mods: []modView{}, Catalog: []catalogView{},
 		ModsOn: !a.state.ModsOff, StartFail: a.startFail, NoModsRun: a.state.NoModsRun != nil,
-		QueueLogMissing: a.queueLogMissing,
+		QueueLogMissing: a.queueLogMissing, Condebug: condebug,
 	}
 	if r := a.state.Repair; r != nil {
 		s.Repair = &repairView{Started: r.Started, Checking: r.SawCheck}

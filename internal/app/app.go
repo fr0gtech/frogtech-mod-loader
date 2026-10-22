@@ -66,9 +66,14 @@ type App struct {
 	quit     chan struct{}
 	// queueLogMissing: the match alert sees no console.log being written
 	queueLogMissing bool
-	quitOnce        sync.Once
-	baseURL         string
-	token           string
+	// -condebug (alert.go): in Steam's launch options (read at condebugAt), or
+	// proven by the game writing its log
+	condebugSteam bool
+	condebugAt    time.Time
+	logProven     bool
+	quitOnce      sync.Once
+	baseURL       string
+	token         string
 
 	// StopServer and StartServer let a self-update release the port before
 	// starting the new exe (and take it back if that fails). Set by main.
@@ -548,6 +553,12 @@ func (a *App) Play(force bool) error {
 
 // SetSettings stores settings and applies the start-with-Windows toggle.
 func (a *App) SetSettings(s mods.Settings) error {
+	a.mu.Lock()
+	turningOn := s.QueueAlert && !a.state.Settings.QueueAlert
+	a.mu.Unlock()
+	if turningOn && !a.condebugOK() {
+		return errors.New("Add -condebug to Deadlock's launch options in Steam first")
+	}
 	a.mu.Lock()
 	old := a.state.Settings
 	s.DontAsk = old.DontAsk // changed only through SetDontAsk / ResetDontAsk

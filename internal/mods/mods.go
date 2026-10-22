@@ -73,6 +73,10 @@ type Settings struct {
 	KeepGameinfo     bool `json:"keepGameinfo"`
 	ShowMature       bool `json:"showMature"` // don't blur GameBanana items it marks as mature
 	QueueAlert       bool `json:"queueAlert"` // alert when Deadlock finds a match (internal/queuealert)
+	// what a match alert does (each on by default, State.AlertPartsInit)
+	AlertFlash  bool `json:"alertFlash"`  // flash Deadlock in the taskbar
+	AlertNotify bool `json:"alertNotify"` // Windows notification
+	AlertPhone  bool `json:"alertPhone"`  // linked phones
 	// DontAsk lists confirmation questions the user ticked "Don't ask again" on
 	// (keys like "remove", "import", "deleteForeign"; see web/index.html).
 	DontAsk map[string]bool `json:"dontAsk,omitempty"`
@@ -89,6 +93,8 @@ type State struct {
 	RunKeyInit   bool         `json:"runKeyInit"` // the start-with-Windows default was applied once
 	// QueueAlertInit: match alerts were switched on once (the default)
 	QueueAlertInit bool `json:"queueAlertInit"`
+	// AlertPartsInit: flash, notification and phone were switched on once (0.8.1)
+	AlertPartsInit bool `json:"alertPartsInit"`
 	// AlertKey links phones to match alerts on mods.frogtech.dev (sealed, internal/secrets)
 	AlertKey string      `json:"alertKey,omitempty"`
 	Window   *WindowRect `json:"window,omitempty"`
