@@ -110,6 +110,9 @@ input[type=checkbox] { accent-color: var(--sky); width: 16px; height: 16px; marg
 .switch input:checked + span { background: var(--primary); }
 .switch input:checked + span::before { transform: translateX(16px); background: var(--ink); }
 .switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + span { opacity: .45; cursor: not-allowed; }
+.setting.sub { padding-left: 20px; }
+.setting.sub.off .main { opacity: .5; }
 .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: s .8s linear infinite; }
 @keyframes s { to { transform: rotate(360deg); } }
 
@@ -412,11 +415,19 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
     <div class="card" id="alertCard">
       <div class="head"><h2>Match alerts</h2></div>
       <div>
-        <div class="setting"><div class="main">Alert me when a match is found<div class="h">Flashes Deadlock in the taskbar and shows a notification when a match is found while you're in another window. Needs Deadlock's <span class="quote">-condebug</span> launch option. <a href="#" id="alertHowHint">How</a></div></div>
+        <div class="setting"><div class="main">Alert me when a match is found<div class="h">When Deadlock finds a match while you're in another window. Needs Deadlock's <span class="quote">-condebug</span> launch option. <a href="#" id="alertHowHint">How</a></div></div>
           <label class="switch"><input type="checkbox" data-setting="queueAlert" aria-label="Alert me when a match is found"><span></span></label></div>
+        <div id="alertGate" class="banner warn hidden"><div class="grow"><div class="t">Add -condebug to Deadlock's launch options first</div>
+          <div class="d">Match alerts read the game's log, which Deadlock only writes with this option. In Steam, right-click Deadlock, choose Properties and add it under Launch options. <a href="#" id="alertGateHow">How to add it</a></div></div>
+          <div class="acts"><button class="outline sm" id="alertCopy">Copy -condebug</button><button class="ghost sm" id="alertRecheck">Check again</button></div></div>
         <div id="alertLog" class="banner warn hidden"><div class="grow"><div class="t">Deadlock isn't writing its log</div>
-          <div class="d">So the loader can't see when a match is found. Add <span class="quote">-condebug</span> to Deadlock's launch options in Steam, then restart the game. <a href="#" id="alertHow">How to add it</a></div></div>
-          <div class="acts"><button class="outline sm" id="alertCopy">Copy -condebug</button></div></div>
+          <div class="d">Restart Deadlock so it starts with <span class="quote">-condebug</span>. <a href="#" id="alertHow">How to add it</a></div></div></div>
+        <div class="setting sub"><div class="main">Flash Deadlock in the taskbar<div class="h">Orange until you click into the game.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="alertFlash" aria-label="Flash Deadlock in the taskbar"><span></span></label></div>
+        <div class="setting sub"><div class="main">Windows notification<div class="h">"Match found", with its sound, also in quiet hours.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="alertNotify" aria-label="Windows notification"><span></span></label></div>
+        <div class="setting sub"><div class="main">Alert my phones<div class="h">Also while Deadlock is in front, so you can queue and walk away.</div></div>
+          <label class="switch"><input type="checkbox" data-setting="alertPhone" aria-label="Alert my phones"><span></span></label></div>
         <div class="setting"><div class="main">Phone<div class="h" id="alertPhoneHint">Get the alert on your phone too.</div></div>
           <span class="row"><button class="ghost sm hidden" id="alertTest">Send a test alert</button><button class="ghost sm hidden" id="alertUnlink">Unlink phones</button><button class="outline sm" id="alertLink">Link my phone</button></span></div>
       </div>
@@ -777,7 +788,17 @@ function render() {
   add("Data folder", h("span", { class: "path" }, S.dataDir));
   if (!dirTouched && document.activeElement !== $("gameDir")) $("gameDir").value = S.game.dir || "";
   for (const el of document.querySelectorAll("[data-setting]")) el.checked = !!S.settings[el.dataset.setting];
-  $("alertLog").classList.toggle("hidden", !(S.queueLogMissing && S.settings.queueAlert));
+  // match alerts: off and locked without -condebug (the saved choice comes back once it's there)
+  const alertsOn = !!(S.settings.queueAlert && S.condebug);
+  const master = document.querySelector("[data-setting=queueAlert]");
+  master.checked = alertsOn;
+  master.disabled = !S.condebug;
+  $("alertGate").classList.toggle("hidden", !!S.condebug);
+  $("alertLog").classList.toggle("hidden", !(S.condebug && S.queueLogMissing && alertsOn));
+  for (const row of document.querySelectorAll("#alertCard .setting.sub")) {
+    row.classList.toggle("off", !alertsOn);
+    row.querySelector("input").disabled = !alertsOn;
+  }
   const nAsk = Object.keys(S.settings.dontAsk || {}).length;
   $("dontAskHint").textContent = nAsk ? "You told the loader not to ask " + plural(nAsk, "question") + " again." : "The loader asks before it removes or deletes anything.";
   $("resetAsk").disabled = !nAsk;
@@ -1564,7 +1585,7 @@ async function loadPhones() {
   try { alertPhones = (await api("alert/phones")).phones || 0; } catch (e) { /* offline: keep what we had */ }
   renderPhones();
 }
-for (const id of ["alertHow", "alertHowHint"]) $(id).addEventListener("click", (e) => { e.preventDefault(); openExternal(ALERT_GUIDE); });
+for (const id of ["alertHow", "alertHowHint", "alertGateHow"]) $(id).addEventListener("click", (e) => { e.preventDefault(); openExternal(ALERT_GUIDE); });
 $("alertCopy").addEventListener("click", () => {
   navigator.clipboard.writeText("-condebug").then(() => toast("Copied -condebug", "ok"), () => toast("Couldn't copy. Type -condebug instead.", "error"));
 });
@@ -1582,6 +1603,11 @@ $("alertLink").addEventListener("click", async () => {
     h("div", { class: "actions" }, h("span", { class: "grow" }), h("button", { class: "primary", onclick: () => entry.close() }, "Done")));
   const entry = openModal(box, loadPhones);
   box.append(xButton(entry.close));
+});
+$("alertRecheck").addEventListener("click", async () => {
+  try { await api("alert/recheck", {}); } catch (e) { return; }
+  await refresh();
+  toast(S.condebug ? "Found -condebug. You can turn match alerts on." : "Still no -condebug in Deadlock's launch options. Steam may save them only after you close the Properties window.", S.condebug ? "ok" : "info");
 });
 $("alertTest").addEventListener("click", () => quiet(act("alert/test", {}, "Test alert sent")));
 $("alertUnlink").addEventListener("click", async () => {
