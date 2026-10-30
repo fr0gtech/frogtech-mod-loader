@@ -6,6 +6,7 @@
 //	frogmod://gamebanana/sound/<sound id>   same for a GameBanana sound
 //	frogmod://install/<repoId>/<modId>      install from a repository the user added
 //	frogmod://repo/add?url=<address>        open the Add repository dialog
+//	frogmod://uikit-set/<key>               install a UI Kit theme set built by mods.frogtech.dev
 //
 // Windows starts `"<exe>" --url "<link>"`; a second instance forwards the link
 // to the running one (POST /api/url) and exits.
@@ -15,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -27,13 +29,17 @@ const Scheme = "frogmod"
 
 // Link is a parsed frogmod:// link.
 type Link struct {
-	Action string // "install", "gamebanana" or "repo-add"
+	Action string // "install", "gamebanana", "repo-add" or "uikit-set"
 	Repo   string // install: repository id ("" = Frogtech)
-	ID     string // install: mod id
+	ID     string // install: mod id; uikit-set: the set's key
 	URL    string // repo-add: the repository address
 	Model  string // gamebanana.ModelMod or gamebanana.ModelSound (gamebanana)
 	GBID   int
 }
+
+// setKeyRe is a theme set's key on mods.frogtech.dev (the sha256 the site
+// names it by; lower case, as the site serves it).
+var setKeyRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // Parse validates a frogmod:// link.
 func Parse(raw string) (Link, error) {
@@ -74,6 +80,11 @@ func Parse(raw string) (Link, error) {
 			return Link{}, fmt.Errorf("repository link: address %v", err)
 		}
 		return Link{Action: "repo-add", URL: ru.String()}, nil
+	case "uikit-set":
+		if len(parts) != 2 || !setKeyRe.MatchString(parts[1]) {
+			return Link{}, fmt.Errorf("bad theme set link %q", raw)
+		}
+		return Link{Action: "uikit-set", ID: parts[1]}, nil
 	case "gamebanana", "gb":
 		model := gamebanana.ModelMod
 		rest := parts[1:]

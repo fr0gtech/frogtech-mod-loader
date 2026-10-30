@@ -31,8 +31,9 @@ type buildsServer struct {
 	buildsHits    int    // builds.json requests
 	onCatalog     func() // called on each catalog.json request
 	uikitGame     string
-	uikitVersion  string // the catalog's UI Kit version (default 1.0.0)
-	zipHits       int    // UI Kit zip downloads
+	uikitVersion  string   // the catalog's UI Kit version (default 1.0.0)
+	zipHits       int      // UI Kit zip downloads
+	site          *setSite // the theme set API (uikitset_test.go)
 }
 
 func zipBytes(t *testing.T, files map[string][]byte) []byte {
@@ -94,6 +95,8 @@ func newBuildsServer(t *testing.T) *buildsServer {
 		w.Write(b)
 	})
 	mux.HandleFunc("/other.zip", func(w http.ResponseWriter, r *http.Request) { w.Write(other) })
+	s.site = newSetSite()
+	mux.Handle("/api/uikit/sets/", s.site)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	s.url = srv.URL

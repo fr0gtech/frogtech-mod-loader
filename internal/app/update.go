@@ -671,6 +671,8 @@ func (a *App) checkGameBuilds(ctx context.Context) error {
 		}
 		errs = append(errs, a.installBuild(ctx, id, job, local, b))
 	}
+	// Once UI Kit's files are for this game: the player's set built for it.
+	errs = append(errs, a.rebuildSet(ctx, local))
 	return errors.Join(errs...)
 }
 
@@ -731,13 +733,17 @@ func (a *App) parkStaleLocked(local string) (map[string]buildJob, error) {
 	return jobs, a.changedLocked()
 }
 
-// waitingForBuilds: a mod is parked and will take a build once one is listed
-// (the update loop then looks every parkedRetryInterval, not every hour).
+// waitingForBuilds: a mod is parked and will take a build once one is listed,
+// or the player's UI Kit set waits to be built for this game (the update loop
+// then looks every parkedRetryInterval, not every hour).
 func (a *App) waitingForBuilds() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.state.FrogtechDisabled {
 		return false
+	}
+	if a.setRebuildDueLocked(a.clientVersionLocked()) {
+		return true
 	}
 	for _, m := range a.state.Mods {
 		if m.Source == mods.SourceCatalog && m.Parked && m.Enabled && m.Builds != "" {
@@ -775,6 +781,7 @@ func (a *App) installBuildLocked(ctx context.Context, id, buildsURL, local strin
 	}
 	m := &mods.Mod{ID: id, Source: mods.SourceCatalog, Name: old.Name, Version: b.Version, Page: old.Page, Image: old.Image,
 		Game: local, Builds: buildsURL}
+	keepSet(old, m)
 	a.mu.Unlock()
 	tmp, err := a.TempFile("build-*.zip")
 	if err != nil {

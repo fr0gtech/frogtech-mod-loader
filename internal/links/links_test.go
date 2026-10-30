@@ -7,6 +7,8 @@ import (
 	"github.com/fr0gtech/frogtech-mod-loader/internal/gamebanana"
 )
 
+const setKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 func TestParseFrogURL(t *testing.T) {
 	ok := map[string]Link{
 		"frogmod://install/uikit":                                             {Action: "install", ID: "uikit"},
@@ -20,6 +22,8 @@ func TestParseFrogURL(t *testing.T) {
 		"frogmod://install/example.com-1a2b3c4d/cool_hud":                     {Action: "install", Repo: "example.com-1a2b3c4d", ID: "cool_hud"},
 		"frogmod://repo/add?url=https%3A%2F%2Fexample.com%2Fmods%2Frepo.json": {Action: "repo-add", URL: "https://example.com/mods/repo.json"},
 		"frogmod://repo/add?url=http%3A%2F%2Flocalhost%3A8080%2Fr.json":       {Action: "repo-add", URL: "http://localhost:8080/r.json"},
+		"frogmod://uikit-set/" + setKey:                                       {Action: "uikit-set", ID: setKey},
+		"FROGMOD://UIKit-Set/" + setKey + "/":                                 {Action: "uikit-set", ID: setKey},
 	}
 	for in, want := range ok {
 		got, err := Parse(in)
@@ -31,7 +35,9 @@ func TestParseFrogURL(t *testing.T) {
 		"frogmod://install/Repo.example/Mod", "https://install/uikit", "frogmod://gamebanana/abc", "frogmod://gamebanana/-1",
 		"frogmod://gamebanana/skin/5", "frogmod://delete/everything", "frogmod://install/" + strings.Repeat("x", 600),
 		"\x00frogmod://install/x", "frogmod://repo/add", "frogmod://repo/add?url=http%3A%2F%2Fexample.com%2Fr.json",
-		"frogmod://repo/add?url=ftp%3A%2F%2Fexample.com%2Fr.json", "frogmod://repo/remove?url=https%3A%2F%2Fexample.com"}
+		"frogmod://repo/add?url=ftp%3A%2F%2Fexample.com%2Fr.json", "frogmod://repo/remove?url=https%3A%2F%2Fexample.com",
+		"frogmod://uikit-set/" + setKey[:63], "frogmod://uikit-set/" + strings.ToUpper(setKey), "frogmod://uikit-set/" + setKey + "0",
+		"frogmod://uikit-set", "frogmod://uikit-set/" + setKey + "/x", "frogmod://uikit-set/" + setKey[:63] + "g"}
 	for _, in := range bad {
 		if got, err := Parse(in); err == nil {
 			t.Errorf("%q accepted: %+v", in, got)

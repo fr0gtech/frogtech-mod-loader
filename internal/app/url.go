@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -69,6 +70,20 @@ func (a *App) HandleURL(ctx context.Context, raw string) {
 	switch fu.Action {
 	case "gamebanana":
 		a.pushEvent(Event{Kind: "open", Model: fu.Model, GBID: fu.GBID})
+	case "uikit-set":
+		a.toastEvent("info", "Installing your themes…")
+		err := a.InstallSet(ctx, fu.ID)
+		var later *errSetLater
+		switch {
+		case errors.As(err, &later):
+			a.toastEvent("info", err.Error())
+		case err != nil:
+			a.toastEvent("error", "Your themes: "+err.Error())
+		case gameRunning():
+			a.toastEvent("ok", "Your themes are installed. Restart Deadlock to see your themes.")
+		default:
+			a.toastEvent("ok", "Your themes are installed.")
+		}
 	case "repo-add":
 		// Never added silently: the page opens the Add repository dialog, prefilled.
 		a.pushEvent(Event{Kind: "repo-add", Text: fu.URL})

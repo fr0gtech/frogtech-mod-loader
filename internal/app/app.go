@@ -341,6 +341,13 @@ func (a *App) InstallCatalogMod(ctx context.Context, id string) error {
 	if err := a.installCatalogLocked(ctx, id); err != nil {
 		return err
 	}
+	// Installed by hand: UI Kit's starter set, the player's set forgotten.
+	a.mu.Lock()
+	if m := a.state.Mod(id); m != nil && m.Set != "" {
+		m.Set, m.SetNote, m.SetFailed = "", "", ""
+		a.saveLocked()
+	}
+	a.mu.Unlock()
 	return a.changedLocked()
 }
 
@@ -368,6 +375,9 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 	}
 	m := &mods.Mod{ID: cm.ID, Source: mods.SourceCatalog, Name: cm.Name, Version: cm.Version, Page: cm.Page, Image: cm.Image,
 		Game: cm.Game, Builds: cm.Builds}
+	a.mu.Lock()
+	keepSet(a.state.Mod(cm.ID), m)
+	a.mu.Unlock()
 	// Built for another game build: in as placeholders until checkGameBuilds
 	// finds the build for this one.
 	m.Parked = m.Builds != "" && stale(m.Game, a.clientVersion())

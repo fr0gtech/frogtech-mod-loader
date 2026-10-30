@@ -54,6 +54,18 @@ type Mod struct {
 	Parked bool   `json:"parked,omitempty"`
 	Builds string `json:"builds,omitempty"`
 
+	// UI Kit theme set (a player's themes built by mods.frogtech.dev, in place
+	// of the starter set's uikit_set_dir.vpk). Set is the set's key; SetGame
+	// and SetCore are the game build and UI Kit version the set file in the
+	// store was built for ("" = the starter set is in place). SetNote is what
+	// the page shows when the site can't build the set; SetFailed is the
+	// "<game>/<core>" it refused, so it is not asked again for those.
+	Set       string `json:"set,omitempty"`
+	SetGame   string `json:"setGame,omitempty"`
+	SetCore   string `json:"setCore,omitempty"`
+	SetNote   string `json:"setNote,omitempty"`
+	SetFailed string `json:"setFailed,omitempty"`
+
 	// Repository (SourceRepo)
 	Repo    string `json:"repo,omitempty"`
 	RepoMod string `json:"repoMod,omitempty"`
@@ -251,6 +263,9 @@ func IsPakName(name string) bool { return pakRe.MatchString(name) }
 var vpkChunkRe = regexp.MustCompile(`(?i)_\d{3}\.vpk$`)
 
 const vpkMagic = 0x55aa1234
+
+// IsVPKHeader: b starts with a VPK's signature.
+func IsVPKHeader(b []byte) bool { return isVPKHeader(b) }
 
 func isVPKHeader(b []byte) bool {
 	return len(b) >= 4 && uint32(b[0])|uint32(b[1])<<8|uint32(b[2])<<16|uint32(b[3])<<24 == vpkMagic

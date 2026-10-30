@@ -36,6 +36,9 @@ type modView struct {
 	Conflicts []string `json:"conflicts,omitempty"` // enabled mods this one conflicts with
 	// Waiting: parked after a game update (its paks are placeholders)
 	Waiting string `json:"waiting,omitempty"`
+	// Themes: UI Kit runs its starter set in place of the player's (being
+	// built for this game, or the site can't build it)
+	Themes string `json:"themes,omitempty"`
 }
 
 type catalogView struct {
@@ -149,6 +152,13 @@ func (a *App) Status() statusView {
 		v := modView{Mod: m, Update: ups[m.ID]}
 		if m.Parked {
 			v.Waiting = "waiting for a build for game " + s.Game.ClientVersion
+		}
+		switch {
+		case m.ID != uikitID || m.Set == "":
+		case m.SetNote != "":
+			v.Themes = m.SetNote
+		case a.setRebuildDueLocked(s.Game.ClientVersion):
+			v.Themes = "Your themes come back once they're built for game " + s.Game.ClientVersion + "; the starter themes run meanwhile"
 		}
 		if cm := a.catalog.Mod(m.ID); cm != nil && m.Enabled {
 			for _, c := range cm.Conflicts {
