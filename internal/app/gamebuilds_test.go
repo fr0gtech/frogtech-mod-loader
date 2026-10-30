@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fr0gtech/frogtech-mod-loader/internal/catalog"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/mods"
@@ -27,6 +28,8 @@ type buildsServer struct {
 	builds        map[string]any // builds.json "builds"
 	zips          map[string][]byte
 	noBuildsField bool
+	buildsHits    int    // builds.json requests
+	onCatalog     func() // called on each catalog.json request
 	uikitGame     string
 }
 
@@ -56,6 +59,12 @@ func newBuildsServer(t *testing.T) *buildsServer {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/catalog.json", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
+		hook := s.onCatalog
+		s.mu.Unlock()
+		if hook != nil {
+			hook()
+		}
+		s.mu.Lock()
 		defer s.mu.Unlock()
 		uk := map[string]any{"id": "uikit", "name": "UI Kit", "version": "1.0.0", "game": s.uikitGame,
 			"url": s.url + "/map-data/uikit/uikit_1.0.0_g6821.zip", "sha256": sha(s.zips["uikit_1.0.0_g6821.zip"])}
@@ -68,6 +77,7 @@ func newBuildsServer(t *testing.T) *buildsServer {
 	mux.HandleFunc("/map-data/uikit/builds.json", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		s.buildsHits++
 		json.NewEncoder(w).Encode(map[string]any{"format": 1, "builds": s.builds})
 	})
 	mux.HandleFunc("/map-data/uikit/", func(w http.ResponseWriter, r *http.Request) {
@@ -349,4 +359,113 @@ func TestUnparkWhenGameMatchesAgain(t *testing.T) {
 	if a.state.Mod("uikit").Parked || !bytes.Equal(readPak(t, addons, "pak01_dir.vpk"), testutil.FakeVPK("core 6821")) {
 		t.Fatal("not unparked")
 	}
+}
+
+func (s *buildsServer) hits() int { s.mu.Lock(); defer s.mu.Unlock(); return s.buildsHits }
+
+// Steam updates the game while the loader runs: the watcher parks the stale
+// mod before it puts the addons line back (no hourly check needed).
+func TestParkOnGameUpdateWhileRunning(t *testing.T) {
+	s, dataDir, game, addons := buildsSetup(t)
+	a := restart(t, dataDir)
+	var seen string
+	a.gameinfoTick(&seen)
+	if seen != "6821" || a.state.Mod("uikit").Parked {
+		t.Fatalf("first round: seen %q, parked %v", seen, a.state.Mod("uikit").Parked)
+	}
+	// The update: new steam.inf, Valve's gameinfo.gi.
+	setClientVersion(t, game, "6822")
+	_, _, gi := steam.Paths(game)
+	os.WriteFile(gi, []byte(testutil.Read(t, "gameinfo_stock_6785.gi")), 0o644)
+
+	// Another operation holds opMu: gameinfo.gi stays Valve's this round.
+	a.opMu.Lock()
+	a.gameinfoTick(&seen)
+	a.opMu.Unlock()
+	if st := a.Status(); st.Gameinfo.Addons {
+		t.Fatal("addons line back before the mod was parked")
+	}
+	if !bytes.Equal(readPak(t, addons, "pak01_dir.vpk"), testutil.FakeVPK("core 6821")) {
+		t.Fatal("pak changed while busy")
+	}
+
+	a.gameinfoTick(&seen)
+	assertParked(t, a, addons)
+	if st := a.Status(); !st.Gameinfo.Patched() {
+		t.Fatal("gameinfo.gi not patched after parking")
+	}
+	select {
+	case <-a.checkNow:
+	default:
+		t.Fatal("no check asked for the builds")
+	}
+	if seen != "6822" || s.hits() != 0 {
+		t.Fatalf("seen %q, builds fetched %d times by the watcher", seen, s.hits())
+	}
+}
+
+// Frogtech repository switched off: parked (the game starts), no download.
+func TestFrogtechDisabledParksWithoutDownload(t *testing.T) {
+	s, dataDir, game, addons := buildsSetup(t)
+	s.listBuild("6822", "1.0.1", uikitZip(t, "6822"), true, "")
+	setClientVersion(t, game, "6822")
+	a := restart(t, dataDir)
+	a.state.FrogtechDisabled = true
+	before := s.hits()
+	if err := a.checkGameBuilds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertParked(t, a, addons)
+	if m := a.state.Mod("uikit"); m.Version != "1.0.0" || s.hits() != before {
+		t.Fatalf("downloaded with Frogtech off: version %s, builds hits %d", m.Version, s.hits()-before)
+	}
+}
+
+// A switched-off mod is recorded as parked but gets no build download.
+func TestDisabledModNoDownload(t *testing.T) {
+	s, dataDir, game, addons := buildsSetup(t)
+	s.listBuild("6822", "1.0.1", uikitZip(t, "6822"), true, "")
+	setClientVersion(t, game, "6822")
+	a := restart(t, dataDir)
+	a.state.Mod("uikit").Enabled = false
+	before := s.hits()
+	if err := a.checkGameBuilds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m := a.state.Mod("uikit")
+	if !m.Parked || m.Version != "1.0.0" || s.hits() != before {
+		t.Fatalf("parked %v, version %s, builds hits %d", m.Parked, m.Version, s.hits()-before)
+	}
+	if !bytes.Equal(readPak(t, addons, "pak01_dir.vpk"), testutil.FakeVPK("other")) {
+		t.Fatal("the other mod should be pak01 with UI Kit off")
+	}
+}
+
+// At start the update loop parks before its first catalog request.
+func TestStartParksBeforeCatalog(t *testing.T) {
+	s, dataDir, game, addons := buildsSetup(t)
+	setClientVersion(t, game, "6822")
+	a := restart(t, dataDir)
+	got := make(chan bool, 1)
+	s.mu.Lock()
+	s.onCatalog = func() {
+		b, _ := os.ReadFile(filepath.Join(addons, "pak01_dir.vpk"))
+		select {
+		case got <- bytes.Equal(b, mods.PlaceholderVPK()):
+		default:
+		}
+	}
+	s.mu.Unlock()
+	done := make(chan struct{})
+	go func() { a.updateLoop(); close(done) }()
+	select {
+	case parked := <-got:
+		if !parked {
+			t.Error("catalog requested before the stale mod was parked")
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("no catalog request")
+	}
+	a.Quit()
+	<-done
 }

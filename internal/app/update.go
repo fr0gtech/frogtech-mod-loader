@@ -42,33 +42,71 @@ func (a *App) RunBackground() {
 func (a *App) watchGameinfo() {
 	t := time.NewTicker(gameinfoInterval)
 	defer t.Stop()
+	var seenGame string
 	for {
-		a.mu.Lock()
-		// Mods off and "Start without mods" keep Valve's file even without the setting.
-		keep := (a.state.Settings.KeepGameinfo || a.modsOffLocked()) && a.state.GameDir != ""
-		pending := a.state.PendingApply && a.state.AppliedOnce && a.state.Repair == nil
-		a.mu.Unlock()
-		a.watchStart()
-		if !keep && a.halfPatched() {
-			keep = true // a file with the addons line but no Mod/Write lines stops the game from starting
-		}
-		if keep {
-			if _, err := a.EnsureGameinfo(); err != nil {
-				log.Printf("gameinfo: %v", err)
-			}
-		}
-		if pending && !gameRunning() && !a.hasUnknownPaks() && a.opMu.TryLock() {
-			if err := a.applyLocked(); err != nil {
-				a.setErr(err)
-			}
-			a.opMu.Unlock()
-		}
+		a.gameinfoTick(&seenGame)
 		select {
 		case <-a.quit:
 			return
 		case <-t.C:
 		}
 	}
+}
+
+// gameinfoTick is one round of watchGameinfo. seenGame is the game's
+// ClientVersion at the last round: when Steam updated the game, stale mods
+// are parked before the addons line goes back into gameinfo.gi.
+func (a *App) gameinfoTick(seenGame *string) {
+	if !a.parkOnGameChange(seenGame) {
+		return // busy: try again next round, gameinfo.gi untouched until parked
+	}
+	a.mu.Lock()
+	// Mods off and "Start without mods" keep Valve's file even without the setting.
+	keep := (a.state.Settings.KeepGameinfo || a.modsOffLocked()) && a.state.GameDir != ""
+	pending := a.state.PendingApply && a.state.AppliedOnce && a.state.Repair == nil
+	a.mu.Unlock()
+	a.watchStart()
+	if !keep && a.halfPatched() {
+		keep = true // a file with the addons line but no Mod/Write lines stops the game from starting
+	}
+	if keep {
+		if _, err := a.EnsureGameinfo(); err != nil {
+			log.Printf("gameinfo: %v", err)
+		}
+	}
+	if pending && !gameRunning() && !a.hasUnknownPaks() && a.opMu.TryLock() {
+		if err := a.applyLocked(); err != nil {
+			a.setErr(err)
+		}
+		a.opMu.Unlock()
+	}
+}
+
+// parkOnGameChange parks stale mods (parkStaleLocked) the first time it sees
+// a ClientVersion, i.e. at start and right after a Steam update, and asks the
+// update loop to look for builds. It returns false when another operation
+// holds opMu, so the caller leaves gameinfo.gi alone this round.
+func (a *App) parkOnGameChange(seenGame *string) bool {
+	cv := a.clientVersion()
+	if cv == "" || cv == *seenGame {
+		return true
+	}
+	if !a.opMu.TryLock() {
+		return false
+	}
+	jobs, err := a.parkStaleLocked(cv)
+	a.opMu.Unlock()
+	if err != nil {
+		log.Printf("game builds: %v", err)
+	}
+	if *seenGame != "" {
+		log.Printf("game updated: %s -> %s", *seenGame, cv)
+	}
+	*seenGame = cv
+	if len(jobs) > 0 {
+		a.TriggerCheck() // fetch the builds for the new game
+	}
+	return true
 }
 
 // halfPatched: gameinfo.gi mounts the mods folder without the Mod/Write lines
@@ -599,8 +637,8 @@ func (a *App) checkGameBuilds(ctx context.Context) error {
 }
 
 // parkStaleLocked parks and unparks catalog mods with a builds.json for game
-// build `local` and applies the change. It returns the parked mods' builds.json
-// URLs by mod id. opMu must be held.
+// build `local` and applies the change. It returns the builds.json URLs of
+// the parked mods to fetch builds for, by mod id. opMu must be held.
 func (a *App) parkStaleLocked(local string) (map[string]string, error) {
 	jobs := map[string]string{}
 	changed := false
@@ -624,7 +662,9 @@ func (a *App) parkStaleLocked(local string) (map[string]string, error) {
 				log.Printf("%s: unparked (game %s)", m.ID, local)
 			}
 		}
-		if m.Parked {
+		// Builds are downloaded for enabled mods, and not while the Frogtech
+		// repository is switched off (parking still keeps the game starting).
+		if m.Parked && m.Enabled && !a.state.FrogtechDisabled {
 			jobs[m.ID] = m.Builds
 		}
 	}
@@ -643,7 +683,7 @@ func (a *App) installBuild(ctx context.Context, id, buildsURL, local string, b c
 	defer a.beginOp("Installing " + id + " for game " + local)()
 	a.mu.Lock()
 	m := a.state.Mod(id)
-	still := m != nil && m.Parked && m.Builds == buildsURL && a.clientVersionLocked() == local
+	still := m != nil && m.Parked && m.Enabled && !a.state.FrogtechDisabled && m.Builds == buildsURL && a.clientVersionLocked() == local
 	a.mu.Unlock()
 	if !still {
 		return nil // changed meanwhile; the next check sees it
