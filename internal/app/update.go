@@ -98,6 +98,11 @@ func (a *App) hasUnknownPaks() bool {
 func (a *App) updateLoop() {
 	next := time.Duration(0) // check right away on start
 	backoff := time.Minute
+	// At start, before the catalog: a game update makes stale UI Kit files
+	// placeholders (the builds.json URL is in state.json).
+	if err := a.checkGameBuilds(context.Background()); err != nil {
+		log.Printf("game builds: %v", err)
+	}
 	for {
 		select {
 		case <-a.quit:
@@ -114,6 +119,9 @@ func (a *App) updateLoop() {
 			}
 		}
 		a.reportCheck(res, err, false)
+		if err := a.checkGameBuilds(context.Background()); err != nil {
+			log.Printf("game builds: %v", err)
+		}
 		// At Windows startup the network is often not up yet: retry the
 		// catalog soon (1, 2, 4 … 15 min) instead of waiting an hour.
 		a.mu.Lock()
@@ -368,6 +376,9 @@ func (a *App) pendingUpdates() []pendingUpdate {
 				continue
 			}
 			cm := a.catalog.Mod(m.ID)
+			if cm != nil && cm.Builds != "" && stale(cm.Game, a.clientVersionLocked()) {
+				continue // the catalog's build is for another game build: checkGameBuilds
+			}
 			if cm != nil && catalog.CompareVersions(cm.Version, m.Version) > 0 {
 				id := m.ID
 				out = append(out, pendingUpdate{modID: id, label: cm.Name + " " + cm.Version,
@@ -524,4 +535,148 @@ func CleanupOldExe() {
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// ---- game builds ----
+//
+// UI Kit's paks carry copies of the game's layouts: after a Steam update they
+// are stale and the game crashes at start. A catalog mod whose entry names a
+// builds.json is parked when the game's ClientVersion differs from the one
+// its files were built for (each of its paks becomes a placeholder, so the
+// pak numbers of later mods don't move), until builds.json lists a published
+// build for this game; that is installed and the mod unparked.
+
+// stale: files built for game build `built` don't fit the game on `local`.
+// An unknown build (installed before the loader recorded it) or an unknown
+// game is never stale.
+func stale(built, local string) bool {
+	return built != "" && local != "" && built != local
+}
+
+// clientVersion is the game's ClientVersion from steam.inf ("" = unknown).
+func (a *App) clientVersion() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.clientVersionLocked()
+}
+
+func (a *App) clientVersionLocked() string {
+	if a.state.GameDir == "" {
+		return ""
+	}
+	return steam.ReadGameInfo(a.state.GameDir).ClientVersion
+}
+
+// checkGameBuilds parks and unparks catalog mods with a builds.json for the
+// game's current build, and installs the build for it when one is listed.
+// It runs at start (no catalog needed: the URL is in state.json) and after
+// each update check.
+func (a *App) checkGameBuilds(ctx context.Context) error {
+	local := a.clientVersion()
+	if local == "" {
+		return nil
+	}
+	a.opMu.Lock()
+	jobs, err := a.parkStaleLocked(local)
+	a.opMu.Unlock()
+	errs := []error{err}
+	// The lists are fetched without opMu: offline, the retries would hold up
+	// the user's own changes.
+	for id, url := range jobs {
+		builds, err := catalog.FetchBuilds(ctx, url)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s builds: %w", id, err))
+			continue
+		}
+		b, ok := builds[local]
+		if !ok {
+			log.Printf("%s: no build for game %s yet", id, local)
+			continue
+		}
+		errs = append(errs, a.installBuild(ctx, id, url, local, b))
+	}
+	return errors.Join(errs...)
+}
+
+// parkStaleLocked parks and unparks catalog mods with a builds.json for game
+// build `local` and applies the change. It returns the parked mods' builds.json
+// URLs by mod id. opMu must be held.
+func (a *App) parkStaleLocked(local string) (map[string]string, error) {
+	jobs := map[string]string{}
+	changed := false
+	a.mu.Lock()
+	for _, m := range a.state.Mods {
+		if m.Source != mods.SourceCatalog {
+			continue
+		}
+		// The catalog, once loaded, says whether the mod has builds.
+		if a.catalog != nil && !a.state.FrogtechDisabled {
+			if cm := a.catalog.Mod(m.ID); cm != nil && cm.Builds != m.Builds {
+				m.Builds, changed = cm.Builds, true
+			}
+		}
+		park := m.Builds != "" && stale(m.Game, local)
+		if park != m.Parked {
+			m.Parked, changed = park, true
+			if park {
+				log.Printf("%s is built for game %s, the game is on %s: parked until a build for it is out", m.ID, m.Game, local)
+			} else {
+				log.Printf("%s: unparked (game %s)", m.ID, local)
+			}
+		}
+		if m.Parked {
+			jobs[m.ID] = m.Builds
+		}
+	}
+	if changed {
+		a.saveLocked()
+	}
+	a.mu.Unlock()
+	if !changed {
+		return jobs, nil
+	}
+	return jobs, a.changedLocked()
+}
+
+// installBuild installs a parked mod's build for game `local` and applies.
+func (a *App) installBuild(ctx context.Context, id, buildsURL, local string, b catalog.Build) error {
+	defer a.beginOp("Installing " + id + " for game " + local)()
+	a.mu.Lock()
+	m := a.state.Mod(id)
+	still := m != nil && m.Parked && m.Builds == buildsURL && a.clientVersionLocked() == local
+	a.mu.Unlock()
+	if !still {
+		return nil // changed meanwhile; the next check sees it
+	}
+	if err := a.installBuildLocked(ctx, id, buildsURL, local, b); err != nil {
+		return fmt.Errorf("%s build for game %s: %w", id, local, err)
+	}
+	return a.changedLocked()
+}
+
+// installBuildLocked installs a mod's build for game `local` (sha256 checked)
+// in place of its files and unparks it. opMu must be held.
+func (a *App) installBuildLocked(ctx context.Context, id, buildsURL, local string, b catalog.Build) error {
+	a.mu.Lock()
+	old := a.state.Mod(id)
+	if old == nil {
+		a.mu.Unlock()
+		return fmt.Errorf("%s is not installed", id)
+	}
+	m := &mods.Mod{ID: id, Source: mods.SourceCatalog, Name: old.Name, Version: b.Version, Page: old.Page, Image: old.Image,
+		Game: local, Builds: buildsURL}
+	a.mu.Unlock()
+	tmp, err := a.TempFile("build-*.zip")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if err := fetch.Download(ctx, updateURL(b.URL), tmp, fetch.Checksum{Algo: "sha256", Hex: b.SHA256, Size: b.Size}); err != nil {
+		return err
+	}
+	if err := a.installFiles(m, tmp, id+".vpk"); err != nil {
+		return err
+	}
+	log.Printf("%s %s for game %s installed", m.Name, b.Version, local)
+	return nil
 }

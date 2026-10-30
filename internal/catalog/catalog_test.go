@@ -82,3 +82,25 @@ func TestCatalogTags(t *testing.T) {
 		t.Fatal("unknown mod got tags")
 	}
 }
+
+func TestFetchBuilds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"format": 1, "builds": {
+			"6821": {"version": "1.0.0", "file": "uikit_1.0.0_g6821.zip", "sha256": "aa", "size": 5, "published": true, "built": "x"},
+			"6822": {"version": "1.0.1", "file": "uikit_1.0.1_g6822.zip", "sha256": "bb", "size": 6, "published": false},
+			"6823": {"version": "1.0.2", "file": "../evil.zip", "sha256": "cc", "published": true},
+			"6824": {"version": "1.0.3", "file": "uikit.zip", "published": true}}}`)
+	}))
+	defer srv.Close()
+	b, err := FetchBuilds(context.Background(), srv.URL+"/map-data/uikit/builds.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) != 1 {
+		t.Fatalf("got %+v, want only 6821", b)
+	}
+	got := b["6821"]
+	if got.Version != "1.0.0" || got.SHA256 != "aa" || got.Size != 5 || got.URL != srv.URL+"/map-data/uikit/uikit_1.0.0_g6821.zip" {
+		t.Fatalf("6821: %+v", got)
+	}
+}

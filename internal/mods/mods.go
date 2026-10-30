@@ -45,6 +45,15 @@ type Mod struct {
 	Category    string    `json:"category,omitempty"` // GameBanana category (e.g. "Skins")
 	InstalledAt time.Time `json:"installedAt"`
 
+	// Game builds (catalog mods whose entry names a builds.json): Game is the
+	// ClientVersion the stored files were built for ("" = installed before the
+	// loader recorded it: unknown, never parked). Parked: the game is on
+	// another build, so each of its paks is a placeholder (PlaceholderVPK)
+	// until a build for this game is installed. Builds is the builds.json URL.
+	Game   string `json:"game,omitempty"`
+	Parked bool   `json:"parked,omitempty"`
+	Builds string `json:"builds,omitempty"`
+
 	// Repository (SourceRepo)
 	Repo    string `json:"repo,omitempty"`
 	RepoMod string `json:"repoMod,omitempty"`
@@ -574,6 +583,9 @@ func (st Store) RestorePak(s *State, addons, name string) (bool, error) {
 		if m == nil || !m.Enabled {
 			return false, nil
 		}
+		if m.Parked && a.SHA256 == placeholderSHA256() {
+			return true, fsutil.WriteFileAtomic(filepath.Join(addons, a.Name), PlaceholderVPK())
+		}
 		for _, f := range m.Files {
 			src := filepath.Join(st.ModDir(m.ID), f)
 			if h, err := fsutil.SHA256File(src); err == nil && h == a.SHA256 {
@@ -667,15 +679,23 @@ func (st Store) Apply(s *State, addons string) error {
 		cut := strings.LastIndex(d.ModID, "/")
 		modID, file := d.ModID[:cut], d.ModID[cut+1:]
 		src := filepath.Join(st.ModDir(modID), file)
-		info, err := os.Stat(src)
-		if err != nil {
-			return fmt.Errorf("mod %s: %w", modID, err)
+		var placeholder []byte
+		if m := s.Mod(modID); m != nil && m.Parked {
+			// Same pak number, empty contents: later mods keep their numbers.
+			placeholder = PlaceholderVPK()
+			d.Size, d.SHA256, d.ModID = int64(len(placeholder)), placeholderSHA256(), modID
+		} else {
+			info, err := os.Stat(src)
+			if err != nil {
+				return fmt.Errorf("mod %s: %w", modID, err)
+			}
+			h, err := fsutil.SHA256File(src)
+			if err != nil {
+				return err
+			}
+			d.Size, d.SHA256, d.ModID = info.Size(), h, modID
 		}
-		h, err := fsutil.SHA256File(src)
-		if err != nil {
-			return err
-		}
-		d.Size, d.SHA256, d.ModID = info.Size(), h, modID
+		h := d.SHA256
 		dst := filepath.Join(addons, d.Name)
 		if p, ok := prev[strings.ToLower(d.Name)]; ok && p.SHA256 == h && p.Size == d.Size {
 			// Already in place (UnknownPaks verified its hash) - unless the file
@@ -686,7 +706,13 @@ func (st Store) Apply(s *State, addons string) error {
 			}
 		}
 		fsutil.SetHashCache(dst, nil, "")
-		if err := fsutil.CopyFileAtomic(src, dst); err != nil {
+		var err error
+		if placeholder != nil {
+			err = fsutil.WriteFileAtomic(dst, placeholder)
+		} else {
+			err = fsutil.CopyFileAtomic(src, dst)
+		}
+		if err != nil {
 			s.Applied = mergeApplied(s.Applied, written)
 			return fmt.Errorf("writing %s: %w", d.Name, err)
 		}

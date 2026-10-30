@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +52,9 @@ type Mod struct {
 	Image       string   `json:"image,omitempty"` // preview image (absolute URL)
 	Tags        []string `json:"tags,omitempty"`  // what the mod is about: HUD, Video, Social...
 	Notes       []string `json:"notes,omitempty"` // what changed in this version
+	// Builds is the URL of a builds.json listing this mod's files per game
+	// build (ClientVersion), for mods that break when Steam updates the game.
+	Builds string `json:"builds,omitempty"`
 }
 
 // defaultTags covers catalogs published before the "tags" field.
@@ -161,4 +165,51 @@ func orZero(s string) string {
 		return "0"
 	}
 	return s
+}
+
+// Build is one entry of a builds.json: the mod built for one game build.
+type Build struct {
+	Version   string `json:"version"`
+	File      string `json:"file"` // zip name, next to builds.json
+	SHA256    string `json:"sha256"`
+	Size      int64  `json:"size"`
+	Published bool   `json:"published"`
+	URL       string `json:"-"` // the zip: builds.json's folder + File
+}
+
+// FetchBuilds downloads a builds.json ({"format": 1, "builds": {"<ClientVersion>":
+// Build}}) and returns its published builds by ClientVersion, each with URL set.
+// Entries not published, or without a plain file name or checksum, are left out.
+func FetchBuilds(ctx context.Context, buildsURL string) (map[string]Build, error) {
+	base, err := url.Parse(buildsURL)
+	if err != nil {
+		return nil, fmt.Errorf("builds: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := fetch.Get(ctx, buildsURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var doc struct {
+		Format int              `json:"format"`
+		Builds map[string]Build `json:"builds"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&doc); err != nil {
+		return nil, fmt.Errorf("builds: %w", err)
+	}
+	if doc.Format != 1 {
+		return nil, fmt.Errorf("builds: unsupported format %d", doc.Format)
+	}
+	out := map[string]Build{}
+	for ver, b := range doc.Builds {
+		if !b.Published || b.SHA256 == "" || b.File == "" || b.File == "." || b.File == ".." ||
+			strings.ContainsAny(b.File, "/\\?#%:") {
+			continue
+		}
+		b.URL = base.ResolveReference(&url.URL{Path: b.File}).String()
+		out[ver] = b
+	}
+	return out, nil
 }

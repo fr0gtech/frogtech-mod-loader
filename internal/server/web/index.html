@@ -868,6 +868,8 @@ function renderMods() {
           ...chips,
           m.gbPinned ? h("span", { class: "chip plain", title: "You picked an older file, so it doesn't update" }, "Kept on this file") : null,
           m.update ? h("span", { style: "color:var(--primary)" }, "Update available") : null,
+          m.waiting ? h("span", { style: "color:var(--brass)", title: "Deadlock was updated and this mod's files were made for the previous version, so they are out of the game until a version for this one is out. It installs by itself." },
+            m.waiting.charAt(0).toUpperCase() + m.waiting.slice(1)) : null,
           (m.conflicts || []).length ? h("span", { style: "color:var(--brass)" }, "Doesn't work with " + m.conflicts.join(", ")) : null)),
       h("div", { class: "side" },
         m.update ? h("button", { class: "primary sm", onclick: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) }, "Update") : null,

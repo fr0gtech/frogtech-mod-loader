@@ -353,7 +353,19 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 	if err := fetch.Download(ctx, src, tmp, fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}); err != nil {
 		return err
 	}
-	return a.installFiles(&mods.Mod{ID: cm.ID, Source: mods.SourceCatalog, Name: cm.Name, Version: cm.Version, Page: cm.Page, Image: cm.Image}, tmp, cm.ID+".vpk")
+	m := &mods.Mod{ID: cm.ID, Source: mods.SourceCatalog, Name: cm.Name, Version: cm.Version, Page: cm.Page, Image: cm.Image,
+		Game: cm.Game, Builds: cm.Builds}
+	// Built for another game build: in as placeholders until checkGameBuilds
+	// finds the build for this one.
+	m.Parked = m.Builds != "" && stale(m.Game, a.clientVersion())
+	if err := a.installFiles(m, tmp, cm.ID+".vpk"); err != nil {
+		return err
+	}
+	if m.Parked {
+		log.Printf("%s %s is built for game %s: waiting for a build for this game", cm.Name, cm.Version, cm.Game)
+		a.TriggerCheck()
+	}
+	return nil
 }
 
 // GameBananaInfo looks up a GameBanana item by link (the "add by link" box).

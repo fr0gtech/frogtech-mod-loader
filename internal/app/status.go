@@ -34,6 +34,8 @@ type modView struct {
 	*mods.Mod
 	Update    string   `json:"update,omitempty"`
 	Conflicts []string `json:"conflicts,omitempty"` // enabled mods this one conflicts with
+	// Waiting: parked after a game update (its paks are placeholders)
+	Waiting string `json:"waiting,omitempty"`
 }
 
 type catalogView struct {
@@ -145,6 +147,9 @@ func (a *App) Status() statusView {
 	}
 	for _, m := range a.state.Mods {
 		v := modView{Mod: m, Update: ups[m.ID]}
+		if m.Parked {
+			v.Waiting = "waiting for a build for game " + s.Game.ClientVersion
+		}
 		if cm := a.catalog.Mod(m.ID); cm != nil && m.Enabled {
 			for _, c := range cm.Conflicts {
 				if enabled[c] {
