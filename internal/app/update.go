@@ -702,11 +702,17 @@ func (a *App) parkStaleLocked(local string) (map[string]buildJob, error) {
 				m.Builds, changed = cm.Builds, true
 			}
 		}
-		park := m.Builds != "" && stale(m.Game, local)
+		// The player's set is parked by its own game build too: with UI
+		// Kit's unknown (Game "") it would otherwise outlive a game update.
+		park := m.Builds != "" && stale(m.Game, local) || m.ID == uikitID && stale(m.SetGame, local)
 		if park != m.Parked {
 			m.Parked, changed = park, true
 			if park {
-				log.Printf("%s is built for game %s, the game is on %s: parked until a build for it is out", m.ID, m.Game, local)
+				built := m.Game
+				if !stale(m.Game, local) {
+					built = m.SetGame // the player's set alone is stale
+				}
+				log.Printf("%s is built for game %s, the game is on %s: parked until a build for it is out", m.ID, built, local)
 			} else {
 				log.Printf("%s: unparked (game %s)", m.ID, local)
 			}

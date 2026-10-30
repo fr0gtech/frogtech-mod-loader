@@ -40,17 +40,19 @@ const (
 )
 
 // errSetLater: the site couldn't build the set for this game and core yet
-// (it doesn't serve the game, it has another core, or it can't be reached).
+// (it doesn't serve the game, it has another core, it is still building the
+// set, or it can't be reached).
 // The starter set runs and the loader asks again on the parked cadence.
 type errSetLater struct{ why string }
 
 func (e *errSetLater) Error() string { return e.why }
 
 // errSetBroken: the site built the set for this game and its themes don't
-// build (422), are too big for it (413) or the site refuses the request
-// (400). Not asked again for this game and
-// core: the player fixes them on the site and opens a new link.
-type errSetBroken struct{ why string }
+// build (422), are too big for it (413), the site refuses the request (400)
+// or no longer has the set (410). Not asked again for this game and core:
+// the player fixes them on the site and opens a new link. note, when set, is
+// the page's line in place of the "don't build" one.
+type errSetBroken struct{ why, note string }
 
 func (e *errSetBroken) Error() string { return e.why }
 
@@ -66,8 +68,11 @@ func siteBase() string {
 
 // markSetBroken records that the site can't build the player's set for game
 // and core: the page says so and the site is not asked again for those.
-func markSetBroken(m *mods.Mod, game, core string) {
-	m.SetNote = "Your themes don't build for game " + game + ": fix them on mods.frogtech.dev/themes"
+func markSetBroken(m *mods.Mod, game, core string, e *errSetBroken) {
+	m.SetNote = e.note
+	if m.SetNote == "" {
+		m.SetNote = "Your themes don't build for game " + game + ": fix them on mods.frogtech.dev/themes"
+	}
 	m.SetFailed = game + "/" + core
 }
 
@@ -115,6 +120,13 @@ func requestRebuild(ctx context.Context, key, game, core string) (string, error)
 		return out.Key, nil
 	case http.StatusNotFound:
 		return "", &errSetLater{"the site can't build themes for game " + game + " yet"}
+	case http.StatusAccepted:
+		// the build takes longer than a request may (Cloudflare's limit): it
+		// goes on, and the next ask finds it built
+		return "", &errSetLater{"the site is still building your themes for game " + game}
+	case http.StatusGone:
+		return "", &errSetBroken{"the site no longer has this theme set",
+			"Your theme set is gone from the site: open a new link on mods.frogtech.dev/themes"}
 	case http.StatusConflict:
 		return "", &errSetLater{"the site builds themes for UI Kit " + out.Core + ", this is UI Kit " + core}
 	case http.StatusUnprocessableEntity, http.StatusRequestEntityTooLarge, http.StatusBadRequest:
@@ -129,7 +141,7 @@ func requestRebuild(ctx context.Context, key, game, core string) (string, error)
 		if out.Error != "" {
 			ps = append(ps, out.Error)
 		}
-		return "", &errSetBroken{"your themes don't build for game " + game + ": " + strings.Join(ps, "; ")}
+		return "", &errSetBroken{"your themes don't build for game " + game + ": " + strings.Join(ps, "; "), ""}
 	}
 	msg := fmt.Sprintf("the site answered HTTP %d", resp.StatusCode)
 	if out.Error != "" {
@@ -177,9 +189,17 @@ func (a *App) InstallSet(ctx context.Context, key string) error {
 		a.mu.Unlock()
 		return errors.New("UI Kit is not installed")
 	}
+	// Without the game build UI Kit's files are for, or a builds.json to
+	// fetch the next one from, nothing would park UI Kit after a game update
+	// and the set would stay in the game, built for the old one.
+	unknown := m.Game == "" || m.Builds == ""
 	parked := m.Parked || stale(m.Game, local)
 	core := m.Version
 	a.mu.Unlock()
+	if unknown {
+		a.TriggerCheck() // with auto-update on, the check installs the build for this game
+		return errors.New("this UI Kit doesn't say which game build it is for: update UI Kit in the loader first, then open the link again")
+	}
 
 	newKey := ""
 	var err error
@@ -198,7 +218,7 @@ func (a *App) InstallSet(ctx context.Context, key string) error {
 			m.Enabled = true
 			m.SetNext, m.SetNote, m.SetFailed = key, "", ""
 			if errors.As(err, &broken) {
-				markSetBroken(m, local, core)
+				markSetBroken(m, local, core, broken)
 			}
 		}
 		a.saveLocked()
@@ -313,7 +333,7 @@ func (a *App) rebuildSet(ctx context.Context, local string) error {
 		log.Printf("UI Kit set %s: %v", key, err)
 		a.mu.Lock()
 		if m := a.state.Mod(uikitID); m != nil && wantedSet(m) == key && m.Version == core {
-			markSetBroken(m, local, core)
+			markSetBroken(m, local, core, broken)
 			a.saveLocked()
 		}
 		a.mu.Unlock()

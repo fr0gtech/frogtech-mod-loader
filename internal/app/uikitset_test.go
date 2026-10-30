@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/fr0gtech/frogtech-mod-loader/internal/mods"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/steam"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/testutil"
 )
@@ -226,6 +227,9 @@ func TestSetRebuildLater(t *testing.T) {
 		{"409", func(rebuildCall) (int, any) {
 			return http.StatusConflict, map[string]string{"error": "the loader and the site disagree on the UI Kit core", "core": "1.0.0"}
 		}},
+		{"202 pending", func(rebuildCall) (int, any) {
+			return http.StatusAccepted, map[string]bool{"pending": true}
+		}},
 		{"network", func(rebuildCall) (int, any) { panic(http.ErrAbortHandler) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -266,24 +270,30 @@ func TestSetRebuildLater(t *testing.T) {
 	}
 }
 
-// The themes don't build for the new game: the page says so, the starter
-// set stays, and the site is not asked again for that game.
+// The themes don't build for the new game (or the site no longer has the
+// set): the page says so, the starter set stays, and the site is not asked
+// again for that game.
 func TestSetRebuildProblems(t *testing.T) {
+	const noBuild = "Your themes don't build for game 6822: fix them on mods.frogtech.dev/themes"
 	for _, tc := range []struct {
 		name   string
 		answer func(rebuildCall) (int, any)
+		note   string
 	}{
 		{"422", func(rebuildCall) (int, any) {
 			return http.StatusUnprocessableEntity, map[string]any{"problems": []map[string]any{
 				{"file": "themes/mine/layout/hud.xml", "line": 3, "message": "unknown panel"}}}
-		}},
-		{"400", func(rebuildCall) (int, any) { return http.StatusBadRequest, map[string]string{"error": "game missing"} }},
+		}, noBuild},
+		{"400", func(rebuildCall) (int, any) { return http.StatusBadRequest, map[string]string{"error": "game missing"} }, noBuild},
+		{"410", func(rebuildCall) (int, any) {
+			return http.StatusGone, map[string]string{"error": "This theme set is not on the site any more"}
+		}, "Your theme set is gone from the site: open a new link on mods.frogtech.dev/themes"},
 	} {
-		t.Run(tc.name, func(t *testing.T) { testSetRebuildProblems(t, tc.answer) })
+		t.Run(tc.name, func(t *testing.T) { testSetRebuildProblems(t, tc.answer, tc.note) })
 	}
 }
 
-func testSetRebuildProblems(t *testing.T, answer func(rebuildCall) (int, any)) {
+func testSetRebuildProblems(t *testing.T, answer func(rebuildCall) (int, any), note string) {
 	s, dataDir, game, addons, _ := withSet(t)
 	setClientVersion(t, game, "6822")
 	s.listBuild("6822", "1.0.1", uikitZip(t, "6822"), true, "")
@@ -297,7 +307,6 @@ func testSetRebuildProblems(t *testing.T, answer func(rebuildCall) (int, any)) {
 	if n := len(s.site.callList()) - before; n != 1 {
 		t.Fatalf("%d rebuild calls for the same game, want 1", n)
 	}
-	const note = "Your themes don't build for game 6822: fix them on mods.frogtech.dev/themes"
 	if m := a.state.Mod("uikit"); m.SetNote != note || m.Set != keyA {
 		t.Fatalf("uikit %+v", m)
 	}
@@ -502,5 +511,73 @@ func TestSetLinkFrogtechOff(t *testing.T) {
 	}
 	if m := a.state.Mod("uikit"); m.Set != "" || m.SetNext != "" || len(s.site.callList()) != 0 {
 		t.Fatalf("recorded or asked the site with Frogtech off: %+v", m)
+	}
+}
+
+// A UI Kit that doesn't say its game build (or has no builds.json) would never
+// be parked after a game update: no set goes onto it.
+func TestInstallSetNeedsUIKitGameBuild(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(m *mods.Mod)
+	}{
+		{"game unknown", func(m *mods.Mod) { m.Game = "" }},
+		{"no builds", func(m *mods.Mod) { m.Builds = "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, dataDir, _, addons := buildsSetup(t)
+			s.site.put(keyA, testutil.FakeVPK("set A"))
+			a := restart(t, dataDir)
+			a.mu.Lock()
+			tc.edit(a.state.Mod("uikit"))
+			a.mu.Unlock()
+			err := a.InstallSet(context.Background(), keyA)
+			if err == nil || !strings.Contains(err.Error(), "update UI Kit in the loader first") {
+				t.Fatalf("err %v", err)
+			}
+			if len(s.site.callList()) != 0 {
+				t.Fatal("asked the site for a set UI Kit can't take")
+			}
+			if m := a.state.Mod("uikit"); m.Set != "" || m.SetNext != "" || m.SetGame != "" {
+				t.Fatalf("uikit %+v", m)
+			}
+			if !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set 6821")) {
+				t.Fatal("the starter set was replaced")
+			}
+		})
+	}
+}
+
+// A set installed on a UI Kit whose game build went unknown (an older
+// record): the game update parks UI Kit by the set's own game build.
+func TestSetParkedWhenUIKitGameUnknown(t *testing.T) {
+	s, dataDir, game, addons, a := withSet(t)
+	a.mu.Lock()
+	a.state.Mod("uikit").Game = ""
+	a.saveLocked()
+	a.mu.Unlock()
+	setClientVersion(t, game, "6822")
+	a = restart(t, dataDir)
+	ctx := context.Background()
+	a.checkGameBuilds(ctx)
+	ph := mods.PlaceholderVPK()
+	if !bytes.Equal(readPak(t, addons, "pak01_dir.vpk"), ph) || !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), ph) {
+		t.Fatal("UI Kit and the set built for game 6821 are still in the game")
+	}
+	if m := a.state.Mod("uikit"); !m.Parked || m.SetGame != "6821" {
+		t.Fatalf("uikit %+v", m)
+	}
+	// the build for the new game is out: UI Kit unparked, the set rebuilt
+	s.listBuild("6822", "1.0.1", uikitZip(t, "6822"), true, "")
+	s.site.put(keyB, testutil.FakeVPK("set B"))
+	s.site.setAnswer(newKeyFor("6822", keyB))
+	if err := a.checkGameBuilds(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if m := a.state.Mod("uikit"); m.Parked || m.Game != "6822" || m.SetGame != "6822" {
+		t.Fatalf("uikit %+v", m)
+	}
+	if !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set B")) {
+		t.Fatal("set B not installed for game 6822")
 	}
 }
