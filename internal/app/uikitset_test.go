@@ -581,3 +581,35 @@ func TestSetParkedWhenUIKitGameUnknown(t *testing.T) {
 		t.Fatal("set B not installed for game 6822")
 	}
 }
+
+// A foreign pak in the addons folder blocks the apply: the link says so
+// instead of "installed", the set stays stored, and the page doesn't claim
+// it is on until an apply works.
+func TestSetLinkApplyBlockedByForeignPak(t *testing.T) {
+	s, dataDir, _, addons := buildsSetup(t)
+	s.site.put(keyA, testutil.FakeVPK("set A"))
+	a := restart(t, dataDir)
+	os.WriteFile(filepath.Join(addons, "pak01_dir.vpk"), testutil.FakeVPK("someone else's"), 0o644)
+	a.TakeEvents()
+	a.HandleURL(context.Background(), "frogmod://uikit-set/"+keyA)
+	ev := a.TakeEvents()
+	if len(ev) == 0 || ev[len(ev)-1].Level != "error" || !strings.Contains(ev[len(ev)-1].Text, "pak01_dir.vpk") ||
+		strings.Contains(ev[len(ev)-1].Text, "installed") && !strings.Contains(ev[len(ev)-1].Text, "didn't install") {
+		t.Fatalf("events %+v", ev)
+	}
+	if m := a.state.Mod("uikit"); m.Set != keyA || !bytes.Equal(storeSet(t, a), testutil.FakeVPK("set A")) {
+		t.Fatalf("set not stored: %+v", m)
+	}
+	if v := uikitView(t, a); v.ThemesOn || v.Themes == "" {
+		t.Fatalf("page claims the set is on: %+v", v)
+	}
+	if err := a.DeleteForeignFile("pak01_dir.vpk"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply(); err != nil {
+		t.Fatal(err)
+	}
+	if v := uikitView(t, a); !v.ThemesOn {
+		t.Fatalf("set not on after the apply: %+v", v)
+	}
+}

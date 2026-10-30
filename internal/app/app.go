@@ -232,8 +232,10 @@ func (a *App) applyLocked() error {
 	err := a.store.Apply(a.state, addons)
 	if err != nil {
 		a.state.PendingApply = true
+		a.state.ApplyError = err.Error()
 		log.Printf("apply: %v", err)
 	} else {
+		a.state.ApplyError = ""
 		log.Printf("applied %d VPK(s) to %s", len(a.state.Applied), addons)
 	}
 	a.saveLocked()
@@ -257,16 +259,22 @@ func (a *App) Apply() error {
 // running" and "foreign paks" are not reported as errors: the change stays
 // pending and the page shows a banner for each.
 func (a *App) changedLocked() error {
-	a.mu.Lock()
-	a.state.PendingApply = true
-	a.saveLocked()
-	a.mu.Unlock()
-	err := a.applyLocked()
+	err := a.markAndApplyLocked()
 	var unk *mods.ErrUnknownPaks
 	if err == nil || errors.Is(err, ErrGameRunning) || errors.Is(err, ErrNoGame) || errors.As(err, &unk) {
 		return nil
 	}
 	return err
+}
+
+// markAndApplyLocked marks the state dirty and applies, returning the
+// apply's own error (game running and foreign paks included).
+func (a *App) markAndApplyLocked() error {
+	a.mu.Lock()
+	a.state.PendingApply = true
+	a.saveLocked()
+	a.mu.Unlock()
+	return a.applyLocked()
 }
 
 // installFiles extracts VPKs from src into the store under m.ID (replacing any

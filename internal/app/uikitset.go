@@ -248,7 +248,18 @@ func (a *App) InstallSet(ctx context.Context, key string) error {
 		m.Enabled = true
 	}
 	a.mu.Unlock()
-	return a.changedLocked()
+	// The set stays recorded when the apply fails, so the next good apply
+	// puts it in; but the player is told now, not "installed".
+	err = a.markAndApplyLocked()
+	var unk *mods.ErrUnknownPaks
+	switch {
+	case err == nil, errors.Is(err, ErrGameRunning), errors.Is(err, ErrNoGame):
+		return nil
+	case errors.As(err, &unk):
+		err = fmt.Errorf("Deadlock's mods folder has files the loader didn't install (%s): use Put back / Import / Delete on them in Your mods, then your themes go in", strings.Join(unk.Files, ", "))
+	}
+	log.Printf("UI Kit set %s stored, not applied: %v", key, err)
+	return err
 }
 
 // installSetLocked downloads set `key`, built for game and core, in place of

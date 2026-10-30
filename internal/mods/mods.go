@@ -114,7 +114,10 @@ type State struct {
 	Applied      []AppliedPak `json:"applied"`
 	AppliedOnce  bool         `json:"appliedOnce"`
 	PendingApply bool         `json:"pendingApply"`
-	RunKeyInit   bool         `json:"runKeyInit"` // the start-with-Windows default was applied once
+	// ApplyError: why the last apply into the game folder failed (empty
+	// when it worked or hasn't run), so the page doesn't claim a set is on.
+	ApplyError string `json:"applyError,omitempty"`
+	RunKeyInit bool   `json:"runKeyInit"` // the start-with-Windows default was applied once
 	// QueueAlertInit: match alerts were switched on once (the default)
 	QueueAlertInit bool `json:"queueAlertInit"`
 	// AlertPartsInit: flash, notification and phone were switched on once (0.8.1)
