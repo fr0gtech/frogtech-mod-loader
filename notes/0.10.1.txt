@@ -1,0 +1,1 @@
+Your themes: when they can't go into the game (for example a mod file the loader didn't install is in the way), the loader says why and how to fix it instead of "installed"
