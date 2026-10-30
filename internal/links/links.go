@@ -41,6 +41,9 @@ type Link struct {
 // names it by; lower case, as the site serves it).
 var setKeyRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// IsSetKey: s is a theme set's key.
+func IsSetKey(s string) bool { return setKeyRe.MatchString(s) }
+
 // Parse validates a frogmod:// link.
 func Parse(raw string) (Link, error) {
 	raw = strings.TrimSpace(raw)

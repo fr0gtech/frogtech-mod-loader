@@ -55,12 +55,15 @@ type Mod struct {
 	Builds string `json:"builds,omitempty"`
 
 	// UI Kit theme set (a player's themes built by mods.frogtech.dev, in place
-	// of the starter set's uikit_set_dir.vpk). Set is the set's key; SetGame
-	// and SetCore are the game build and UI Kit version the set file in the
-	// store was built for ("" = the starter set is in place). SetNote is what
-	// the page shows when the site can't build the set; SetFailed is the
+	// of the starter set's uikit_set_dir.vpk). Set is the key of the set last
+	// installed; SetGame and SetCore are the game build and UI Kit version the
+	// set file in the store was built for ("" = the starter set is in place).
+	// SetNext is a set the player chose that waits to be built for this game
+	// (the file in the store stays as it is until then). SetNote is what the
+	// page shows when the site can't build the set; SetFailed is the
 	// "<game>/<core>" it refused, so it is not asked again for those.
 	Set       string `json:"set,omitempty"`
+	SetNext   string `json:"setNext,omitempty"`
 	SetGame   string `json:"setGame,omitempty"`
 	SetCore   string `json:"setCore,omitempty"`
 	SetNote   string `json:"setNote,omitempty"`

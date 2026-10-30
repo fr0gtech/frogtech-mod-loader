@@ -247,10 +247,8 @@ func TestSetRebuildLater(t *testing.T) {
 			if !a.waitingForBuilds() {
 				t.Fatal("not retried on the parked cadence")
 			}
-			for _, v := range a.Status().Mods {
-				if v.ID == "uikit" && !strings.Contains(v.Themes, "built for game 6822") {
-					t.Fatalf("page message %q", v.Themes)
-				}
+			if v := uikitView(t, a); !strings.Contains(v.Themes, "built for game 6822; the starter themes run") || v.ThemesOn {
+				t.Fatalf("page message %q", v.Themes)
 			}
 			a.checkGameBuilds(ctx)
 			if n := len(s.site.callList()) - before; n != 2 {
@@ -271,13 +269,25 @@ func TestSetRebuildLater(t *testing.T) {
 // The themes don't build for the new game: the page says so, the starter
 // set stays, and the site is not asked again for that game.
 func TestSetRebuildProblems(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		answer func(rebuildCall) (int, any)
+	}{
+		{"422", func(rebuildCall) (int, any) {
+			return http.StatusUnprocessableEntity, map[string]any{"problems": []map[string]any{
+				{"file": "themes/mine/layout/hud.xml", "line": 3, "message": "unknown panel"}}}
+		}},
+		{"400", func(rebuildCall) (int, any) { return http.StatusBadRequest, map[string]string{"error": "game missing"} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) { testSetRebuildProblems(t, tc.answer) })
+	}
+}
+
+func testSetRebuildProblems(t *testing.T, answer func(rebuildCall) (int, any)) {
 	s, dataDir, game, addons, _ := withSet(t)
 	setClientVersion(t, game, "6822")
 	s.listBuild("6822", "1.0.1", uikitZip(t, "6822"), true, "")
-	s.site.setAnswer(func(rebuildCall) (int, any) {
-		return http.StatusUnprocessableEntity, map[string]any{"problems": []map[string]any{
-			{"file": "themes/mine/layout/hud.xml", "line": 3, "message": "unknown panel"}}}
-	})
+	s.site.setAnswer(answer)
 	a := restart(t, dataDir)
 	ctx := context.Background()
 	before := len(s.site.callList())
@@ -297,11 +307,21 @@ func TestSetRebuildProblems(t *testing.T) {
 	if a.waitingForBuilds() {
 		t.Fatal("still retrying after the site refused the themes")
 	}
-	for _, m := range a.Status().Mods {
-		if m.ID == "uikit" && m.Themes != note {
-			t.Fatalf("page message %q", m.Themes)
+	if v := uikitView(t, a); v.Themes != note+" (the starter themes run meanwhile)" {
+		t.Fatalf("page message %q", v.Themes)
+	}
+}
+
+// uikitView is UI Kit's row in the page's status.
+func uikitView(t *testing.T, a *App) modView {
+	t.Helper()
+	for _, v := range a.Status().Mods {
+		if v.ID == "uikit" {
+			return v
 		}
 	}
+	t.Fatal("no UI Kit row in the status")
+	return modView{}
 }
 
 // A UI Kit release on the same game: the set is rebuilt for the new core.
@@ -392,6 +412,10 @@ func TestSetLinkWhileGameRunning(t *testing.T) {
 	if !a.state.PendingApply || !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set 6821")) {
 		t.Fatal("wrote the game folder while the game runs")
 	}
+	if m := a.state.Mod("uikit"); m.Set != keyA || m.SetGame != "6821" || m.SetCore != "1.0.0" || m.SetNext != "" ||
+		!bytes.Equal(storeSet(t, a), testutil.FakeVPK("set A")) {
+		t.Fatalf("set not recorded: %+v", m)
+	}
 	f.set(false)
 	var seen string
 	a.gameinfoTick(&seen)
@@ -414,7 +438,7 @@ func TestSetLinkGameNotServed(t *testing.T) {
 		t.Fatalf("events %+v", ev)
 	}
 	m := a.state.Mod("uikit")
-	if m.Set != keyA || m.SetGame != "" || !a.waitingForBuilds() {
+	if m.SetNext != keyA || m.Set != "" || m.SetGame != "" || !a.waitingForBuilds() {
 		t.Fatalf("uikit %+v", m)
 	}
 	if !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set 6821")) {
@@ -427,5 +451,56 @@ func TestSetLinkGameNotServed(t *testing.T) {
 	}
 	if !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set B")) {
 		t.Fatal("set not installed once the site could build it")
+	}
+}
+
+// A new link while set A runs, the site can't build set B yet: A's record
+// stays true (A is what's in the game), B goes in once it is built.
+func TestNewSetWaitsWhileOldRuns(t *testing.T) {
+	s, _, _, addons, a := withSet(t)
+	s.site.setAnswer(func(rebuildCall) (int, any) {
+		return http.StatusNotFound, map[string]string{"error": "game not served yet"}
+	})
+	if err := a.InstallSet(context.Background(), keyB); err == nil {
+		t.Fatal("no word that the set waits")
+	}
+	m := a.state.Mod("uikit")
+	if m.Set != keyA || m.SetGame != "6821" || m.SetNext != keyB || !a.waitingForBuilds() {
+		t.Fatalf("uikit %+v", m)
+	}
+	if !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set A")) {
+		t.Fatal("set A is not in the game anymore")
+	}
+	if v := uikitView(t, a); !strings.Contains(v.Themes, "your previous themes run meanwhile") {
+		t.Fatalf("page message %q", v.Themes)
+	}
+	s.site.put(keyB, testutil.FakeVPK("set B"))
+	s.site.setAnswer(nil)
+	if err := a.checkGameBuilds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if c := s.site.callList(); c[len(c)-1] != (rebuildCall{keyB, "6821", "1.0.0"}) {
+		t.Fatalf("rebuild calls %+v", c)
+	}
+	m = a.state.Mod("uikit")
+	if m.Set != keyB || m.SetNext != "" || a.waitingForBuilds() ||
+		!bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set B")) {
+		t.Fatalf("set B not installed: %+v", m)
+	}
+	if v := uikitView(t, a); v.Themes != "Your themes are on" || !v.ThemesOn {
+		t.Fatalf("page message %q", v.Themes)
+	}
+}
+
+// The Frogtech repository switched off: the link says so, nothing recorded.
+func TestSetLinkFrogtechOff(t *testing.T) {
+	s, dataDir, _, _ := buildsSetup(t)
+	a := restart(t, dataDir)
+	a.state.FrogtechDisabled = true
+	if err := a.InstallSet(context.Background(), keyA); err == nil || !strings.Contains(err.Error(), "switched off") {
+		t.Fatalf("err %v", err)
+	}
+	if m := a.state.Mod("uikit"); m.Set != "" || m.SetNext != "" || len(s.site.callList()) != 0 {
+		t.Fatalf("recorded or asked the site with Frogtech off: %+v", m)
 	}
 }

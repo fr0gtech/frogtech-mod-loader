@@ -343,8 +343,8 @@ func (a *App) InstallCatalogMod(ctx context.Context, id string) error {
 	}
 	// Installed by hand: UI Kit's starter set, the player's set forgotten.
 	a.mu.Lock()
-	if m := a.state.Mod(id); m != nil && m.Set != "" {
-		m.Set, m.SetNote, m.SetFailed = "", "", ""
+	if m := a.state.Mod(id); m != nil && (m.Set != "" || m.SetNext != "") {
+		m.Set, m.SetNext, m.SetNote, m.SetFailed = "", "", "", ""
 		a.saveLocked()
 	}
 	a.mu.Unlock()

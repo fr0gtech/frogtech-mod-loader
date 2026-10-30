@@ -870,6 +870,8 @@ function renderMods() {
           m.update ? h("span", { style: "color:var(--primary)" }, "Update available") : null,
           m.waiting ? h("span", { style: "color:var(--brass)", title: "Deadlock was updated and this mod's files were made for the previous version, so they are out of the game until a version for this one is out. It installs by itself." },
             m.waiting.charAt(0).toUpperCase() + m.waiting.slice(1)) : null,
+          m.themes ? h("span", m.themesOn ? { title: "Your own themes from mods.frogtech.dev are in the game" }
+            : { style: "color:var(--brass)", title: "Your themes from mods.frogtech.dev are built for each game version and UI Kit release. Until the site has built them for this one, UI Kit keeps the themes that were already in place, so the game always starts." }, m.themes) : null,
           (m.conflicts || []).length ? h("span", { style: "color:var(--brass)" }, "Doesn't work with " + m.conflicts.join(", ")) : null)),
       h("div", { class: "side" },
         m.update ? h("button", { class: "primary sm", onclick: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) }, "Update") : null,

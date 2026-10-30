@@ -36,9 +36,10 @@ type modView struct {
 	Conflicts []string `json:"conflicts,omitempty"` // enabled mods this one conflicts with
 	// Waiting: parked after a game update (its paks are placeholders)
 	Waiting string `json:"waiting,omitempty"`
-	// Themes: UI Kit runs its starter set in place of the player's (being
-	// built for this game, or the site can't build it)
-	Themes string `json:"themes,omitempty"`
+	// Themes: the state of the player's UI Kit set (on, waiting to be built
+	// for this game, or the site can't build it); ThemesOn: the set is on
+	Themes   string `json:"themes,omitempty"`
+	ThemesOn bool   `json:"themesOn,omitempty"`
 }
 
 type catalogView struct {
@@ -153,12 +154,8 @@ func (a *App) Status() statusView {
 		if m.Parked {
 			v.Waiting = "waiting for a build for game " + s.Game.ClientVersion
 		}
-		switch {
-		case m.ID != uikitID || m.Set == "":
-		case m.SetNote != "":
-			v.Themes = m.SetNote
-		case a.setRebuildDueLocked(s.Game.ClientVersion):
-			v.Themes = "Your themes come back once they're built for game " + s.Game.ClientVersion + "; the starter themes run meanwhile"
+		if m.ID == uikitID {
+			v.Themes, v.ThemesOn = themesText(m, a.setRebuildDueLocked(s.Game.ClientVersion), s.Game.ClientVersion)
 		}
 		if cm := a.catalog.Mod(m.ID); cm != nil && m.Enabled {
 			for _, c := range cm.Conflicts {
@@ -263,4 +260,28 @@ func logTail() []string {
 	UILog.mu.Lock()
 	defer UILog.mu.Unlock()
 	return append([]string(nil), UILog.lines...)
+}
+
+// themesText is the UI Kit row's line about the player's theme set. A set
+// file of the player's is in the store when SetGame is set (else the starter
+// set is); due: the wanted set waits to be built for game `local`.
+func themesText(m *mods.Mod, due bool, local string) (string, bool) {
+	custom := m.SetGame != ""
+	running := "the starter themes run meanwhile"
+	if custom {
+		running = "your previous themes run meanwhile"
+	}
+	switch {
+	case wantedSet(m) == "":
+		return "", false
+	case m.SetNote != "":
+		return m.SetNote + " (" + running + ")", false
+	case due && m.SetNext != "":
+		return "Your new themes go in once they're built for game " + local + "; " + running, false
+	case due:
+		return "Your themes come back once they're built for game " + local + "; " + running, false
+	case custom && !m.Parked:
+		return "Your themes are on", true
+	}
+	return "", false
 }

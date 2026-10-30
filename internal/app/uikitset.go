@@ -24,13 +24,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/fr0gtech/frogtech-mod-loader/internal/catalog"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/fetch"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/fsutil"
+	"github.com/fr0gtech/frogtech-mod-loader/internal/links"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/mods"
 )
 
@@ -38,8 +38,6 @@ const (
 	uikitID      = "uikit"
 	uikitSetFile = "uikit_set_dir.vpk"
 )
-
-var setKeyRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // errSetLater: the site couldn't build the set for this game and core yet
 // (it doesn't serve the game, it has another core, or it can't be reached).
@@ -49,7 +47,8 @@ type errSetLater struct{ why string }
 func (e *errSetLater) Error() string { return e.why }
 
 // errSetBroken: the site built the set for this game and its themes don't
-// build (422) or are too big for it (413). Not asked again for this game and
+// build (422), are too big for it (413) or the site refuses the request
+// (400). Not asked again for this game and
 // core: the player fixes them on the site and opens a new link.
 type errSetBroken struct{ why string }
 
@@ -65,8 +64,20 @@ func siteBase() string {
 	return u.Scheme + "://" + u.Host
 }
 
-func setNoteFor(game string) string {
-	return "Your themes don't build for game " + game + ": fix them on mods.frogtech.dev/themes"
+// markSetBroken records that the site can't build the player's set for game
+// and core: the page says so and the site is not asked again for those.
+func markSetBroken(m *mods.Mod, game, core string) {
+	m.SetNote = "Your themes don't build for game " + game + ": fix them on mods.frogtech.dev/themes"
+	m.SetFailed = game + "/" + core
+}
+
+// wantedSet is the set the player wants in the game: a newly chosen one
+// waiting to be built, else the one last installed.
+func wantedSet(m *mods.Mod) string {
+	if m.SetNext != "" {
+		return m.SetNext
+	}
+	return m.Set
 }
 
 // requestRebuild asks the site for set `key` built for game and core and
@@ -98,7 +109,7 @@ func requestRebuild(ctx context.Context, key, game, core string) (string, error)
 	json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out)
 	switch resp.StatusCode {
 	case http.StatusOK:
-		if !setKeyRe.MatchString(out.Key) {
+		if !links.IsSetKey(out.Key) {
 			return "", &errSetLater{"the site answered an unreadable key"}
 		}
 		return out.Key, nil
@@ -106,7 +117,7 @@ func requestRebuild(ctx context.Context, key, game, core string) (string, error)
 		return "", &errSetLater{"the site can't build themes for game " + game + " yet"}
 	case http.StatusConflict:
 		return "", &errSetLater{"the site builds themes for UI Kit " + out.Core + ", this is UI Kit " + core}
-	case http.StatusUnprocessableEntity, http.StatusRequestEntityTooLarge:
+	case http.StatusUnprocessableEntity, http.StatusRequestEntityTooLarge, http.StatusBadRequest:
 		var ps []string
 		for _, p := range out.Problems {
 			s := p.Message
@@ -133,8 +144,14 @@ func requestRebuild(ctx context.Context, key, game, core string) (string, error)
 // first; when it can't yet, the set is recorded and installed by a later
 // check (errSetLater), the starter set running meanwhile.
 func (a *App) InstallSet(ctx context.Context, key string) error {
-	if !setKeyRe.MatchString(key) {
+	if !links.IsSetKey(key) {
 		return fmt.Errorf("%q is not a theme set", key)
+	}
+	a.mu.Lock()
+	off := a.state.FrogtechDisabled
+	a.mu.Unlock()
+	if off {
+		return errors.New("the Frogtech repository is switched off (Settings > Repositories): turn it on to install your themes")
 	}
 	a.mu.Lock()
 	installed := a.state.Mod(uikitID) != nil
@@ -173,14 +190,15 @@ func (a *App) InstallSet(ctx context.Context, key string) error {
 	}
 	defer a.beginOp("Installing your themes")()
 	if err != nil {
-		// Recorded for a later check, the starter set in place meanwhile.
+		// Recorded for a later check; the set file in the store (the
+		// starter set or the player's previous set) stays meanwhile.
 		var broken *errSetBroken
 		a.mu.Lock()
 		if m := a.state.Mod(uikitID); m != nil {
 			m.Enabled = true
-			m.Set, m.SetGame, m.SetCore, m.SetNote, m.SetFailed = key, "", "", "", ""
+			m.SetNext, m.SetNote, m.SetFailed = key, "", ""
 			if errors.As(err, &broken) {
-				m.SetNote, m.SetFailed = setNoteFor(local), local+"/"+core
+				markSetBroken(m, local, core)
 			}
 		}
 		a.saveLocked()
@@ -193,7 +211,7 @@ func (a *App) InstallSet(ctx context.Context, key string) error {
 		}
 		log.Printf("UI Kit set %s: %v; the starter set runs until it is built", key, err)
 		a.TriggerCheck()
-		return &errSetLater{"Your themes go in once they're built for game " + local + " (" + err.Error() + "). UI Kit's starter themes run meanwhile."}
+		return &errSetLater{"Your themes go in once they're built for game " + local + " (" + err.Error() + ")."}
 	}
 	a.mu.Lock()
 	m = a.state.Mod(uikitID)
@@ -246,7 +264,7 @@ func (a *App) installSetLocked(ctx context.Context, key, game, core string) erro
 	}
 	a.mu.Lock()
 	if m := a.state.Mod(uikitID); m != nil {
-		m.Set, m.SetGame, m.SetCore, m.SetNote, m.SetFailed = key, game, core, "", ""
+		m.Set, m.SetGame, m.SetCore, m.SetNext, m.SetNote, m.SetFailed = key, game, core, "", "", ""
 	}
 	a.saveLocked()
 	a.mu.Unlock()
@@ -254,16 +272,16 @@ func (a *App) installSetLocked(ctx context.Context, key, game, core string) erro
 	return nil
 }
 
-// setRebuildDueLocked: UI Kit runs files for game `local` (not parked) and
-// the player's set in the store was built for another game or core (or the
-// starter set is in place), and the site hasn't refused this game and core.
-// mu must be held.
+// setRebuildDueLocked: UI Kit runs files for game `local` (not parked), the
+// player chose a set that isn't installed yet or the set in the store was
+// built for another game or core (or the starter set is in place), and the
+// site hasn't refused this game and core. mu must be held.
 func (a *App) setRebuildDueLocked(local string) bool {
 	m := a.state.Mod(uikitID)
-	if m == nil || m.Set == "" || !m.Enabled || m.Parked || a.state.FrogtechDisabled || local == "" || stale(m.Game, local) {
+	if m == nil || wantedSet(m) == "" || !m.Enabled || m.Parked || a.state.FrogtechDisabled || local == "" || stale(m.Game, local) {
 		return false
 	}
-	if m.SetGame == local && m.SetCore == m.Version {
+	if m.SetNext == "" && m.SetGame == local && m.SetCore == m.Version {
 		return false
 	}
 	return m.SetFailed != local+"/"+m.Version
@@ -278,7 +296,7 @@ func (a *App) rebuildSet(ctx context.Context, local string) error {
 	var key, core string
 	if due {
 		m := a.state.Mod(uikitID)
-		key, core = m.Set, m.Version
+		key, core = wantedSet(m), m.Version
 	}
 	a.mu.Unlock()
 	if !due {
@@ -294,8 +312,8 @@ func (a *App) rebuildSet(ctx context.Context, local string) error {
 	case errors.As(err, &broken):
 		log.Printf("UI Kit set %s: %v", key, err)
 		a.mu.Lock()
-		if m := a.state.Mod(uikitID); m != nil && m.Set == key && m.Version == core {
-			m.SetNote, m.SetFailed = setNoteFor(local), local+"/"+core
+		if m := a.state.Mod(uikitID); m != nil && wantedSet(m) == key && m.Version == core {
+			markSetBroken(m, local, core)
 			a.saveLocked()
 		}
 		a.mu.Unlock()
@@ -306,7 +324,7 @@ func (a *App) rebuildSet(ctx context.Context, local string) error {
 	defer a.beginOp("Installing your themes for game " + local)()
 	a.mu.Lock()
 	m := a.state.Mod(uikitID)
-	still := m != nil && m.Set == key && m.Version == core && !m.Parked && m.Enabled && !stale(m.Game, local) &&
+	still := m != nil && wantedSet(m) == key && m.Version == core && !m.Parked && m.Enabled && !stale(m.Game, local) &&
 		a.clientVersionLocked() == local
 	a.mu.Unlock()
 	if !still {
@@ -323,6 +341,6 @@ func (a *App) rebuildSet(ctx context.Context, local string) error {
 // set, so the set is asked for again for their game and core.
 func keepSet(old, m *mods.Mod) {
 	if old != nil && m.ID == uikitID {
-		m.Set = old.Set
+		m.Set, m.SetNext = old.Set, old.SetNext
 	}
 }

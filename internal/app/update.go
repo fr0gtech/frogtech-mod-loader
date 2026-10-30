@@ -612,9 +612,11 @@ func stale(built, local string) bool {
 
 // clientVersion is the game's ClientVersion from steam.inf ("" = unknown).
 func (a *App) clientVersion() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.clientVersionLocked()
+	dir := a.GameDir()
+	if dir == "" {
+		return ""
+	}
+	return steam.ReadGameInfo(dir).ClientVersion
 }
 
 func (a *App) clientVersionLocked() string {
@@ -737,12 +739,13 @@ func (a *App) parkStaleLocked(local string) (map[string]buildJob, error) {
 // or the player's UI Kit set waits to be built for this game (the update loop
 // then looks every parkedRetryInterval, not every hour).
 func (a *App) waitingForBuilds() bool {
+	local := a.clientVersion() // steam.inf read outside mu
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.state.FrogtechDisabled {
 		return false
 	}
-	if a.setRebuildDueLocked(a.clientVersionLocked()) {
+	if a.setRebuildDueLocked(local) {
 		return true
 	}
 	for _, m := range a.state.Mods {
