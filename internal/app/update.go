@@ -29,6 +29,10 @@ const (
 	retryInterval    = 5 * time.Minute
 )
 
+// parkedRetryInterval: how often a parked mod's builds.json is looked at
+// (a var for the tests).
+var parkedRetryInterval = 10 * time.Minute
+
 // RunBackground runs the gameinfo watcher, the update checker and the match
 // alert until quit.
 func (a *App) RunBackground() {
@@ -62,7 +66,9 @@ func (a *App) gameinfoTick(seenGame *string) {
 	}
 	a.mu.Lock()
 	// Mods off and "Start without mods" keep Valve's file even without the setting.
-	keep := (a.state.Settings.KeepGameinfo || a.modsOffLocked()) && a.state.GameDir != ""
+	// A parked mod's stale paks still in the folder: Valve's file (EnsureGameinfo
+	// takes the addons line out) until the placeholders are in place.
+	keep := (a.state.Settings.KeepGameinfo || a.modsOffLocked() || a.state.StaleParkedPaks()) && a.state.GameDir != ""
 	pending := a.state.PendingApply && a.state.AppliedOnce && a.state.Repair == nil
 	a.mu.Unlock()
 	a.watchStart()
@@ -134,7 +140,8 @@ func (a *App) hasUnknownPaks() bool {
 }
 
 func (a *App) updateLoop() {
-	next := time.Duration(0) // check right away on start
+	due := time.Now() // check right away on start
+	var next time.Duration
 	backoff := time.Minute
 	// At start, before the catalog: a game update makes stale UI Kit files
 	// placeholders (the builds.json URL is in state.json).
@@ -142,11 +149,22 @@ func (a *App) updateLoop() {
 		log.Printf("game builds: %v", err)
 	}
 	for {
+		// While a mod waits for a build for this game, its builds.json is
+		// looked at every parkedRetryInterval in between the full checks.
+		var retry <-chan time.Time
+		if a.waitingForBuilds() {
+			retry = time.After(parkedRetryInterval)
+		}
 		select {
 		case <-a.quit:
 			return
-		case <-time.After(next):
+		case <-time.After(time.Until(due)):
 		case <-a.checkNow:
+		case <-retry:
+			if err := a.checkGameBuilds(context.Background()); err != nil {
+				log.Printf("game builds: %v", err)
+			}
+			continue
 		}
 		next = updateInterval
 		res, err := a.CheckUpdates(context.Background(), true)
@@ -170,6 +188,7 @@ func (a *App) updateLoop() {
 		} else {
 			backoff = time.Minute
 		}
+		due = time.Now().Add(next)
 	}
 }
 
@@ -605,10 +624,24 @@ func (a *App) clientVersionLocked() string {
 	return steam.ReadGameInfo(a.state.GameDir).ClientVersion
 }
 
+// buildJob: a catalog mod to look up in its builds.json. parked: install the
+// entry for the local game whatever its version (the mod's paks are
+// placeholders meanwhile). Otherwise the mod runs on files whose game build is
+// unknown (game == "": any entry for the local game replaces them) or a newer
+// version waits in a catalog entry built for another game: only an entry newer
+// than the installed version is installed. version and game are the mod's at
+// queue time: a mod changed meanwhile is left for the next check.
+type buildJob struct {
+	url     string
+	parked  bool
+	version string
+	game    string
+}
+
 // checkGameBuilds parks and unparks catalog mods with a builds.json for the
 // game's current build, and installs the build for it when one is listed.
-// It runs at start (no catalog needed: the URL is in state.json) and after
-// each update check.
+// It runs at start (no catalog needed: the URL is in state.json), after each
+// update check, and every parkedRetryInterval while a mod waits.
 func (a *App) checkGameBuilds(ctx context.Context) error {
 	local := a.clientVersion()
 	if local == "" {
@@ -620,36 +653,48 @@ func (a *App) checkGameBuilds(ctx context.Context) error {
 	errs := []error{err}
 	// The lists are fetched without opMu: offline, the retries would hold up
 	// the user's own changes.
-	for id, url := range jobs {
-		builds, err := catalog.FetchBuilds(ctx, url)
+	for id, job := range jobs {
+		builds, err := catalog.FetchBuilds(ctx, job.url)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s builds: %w", id, err))
 			continue
 		}
 		b, ok := builds[local]
 		if !ok {
-			log.Printf("%s: no build for game %s yet", id, local)
+			if job.parked {
+				log.Printf("%s: no build for game %s yet", id, local)
+			}
 			continue
 		}
-		errs = append(errs, a.installBuild(ctx, id, url, local, b))
+		if !job.parked && job.game != "" && catalog.CompareVersions(b.Version, job.version) <= 0 {
+			continue // nothing newer for this game: no download
+		}
+		errs = append(errs, a.installBuild(ctx, id, job, local, b))
 	}
 	return errors.Join(errs...)
 }
 
 // parkStaleLocked parks and unparks catalog mods with a builds.json for game
-// build `local` and applies the change. It returns the builds.json URLs of
-// the parked mods to fetch builds for, by mod id. opMu must be held.
-func (a *App) parkStaleLocked(local string) (map[string]string, error) {
-	jobs := map[string]string{}
+// build `local` and applies the change. It returns, by mod id, the mods to
+// look up in their builds.json: the parked ones, and with auto-update on the
+// ones on files of an unknown game build or with a newer version only in a
+// catalog entry for another game (pendingUpdates leaves those out). opMu must
+// be held.
+func (a *App) parkStaleLocked(local string) (map[string]buildJob, error) {
+	jobs := map[string]buildJob{}
 	changed := false
 	a.mu.Lock()
 	for _, m := range a.state.Mods {
 		if m.Source != mods.SourceCatalog {
 			continue
 		}
-		// The catalog, once loaded, says whether the mod has builds.
+		// The catalog, once loaded, says whether the mod has builds. An entry
+		// without "builds" never clears a stored URL: a catalog published by
+		// mistake without it would otherwise unpark the mod onto stale files.
+		var cm *catalog.Mod
 		if a.catalog != nil && !a.state.FrogtechDisabled {
-			if cm := a.catalog.Mod(m.ID); cm != nil && cm.Builds != m.Builds {
+			cm = a.catalog.Mod(m.ID)
+			if cm != nil && cm.Builds != "" && cm.Builds != m.Builds {
 				m.Builds, changed = cm.Builds, true
 			}
 		}
@@ -664,8 +709,16 @@ func (a *App) parkStaleLocked(local string) (map[string]string, error) {
 		}
 		// Builds are downloaded for enabled mods, and not while the Frogtech
 		// repository is switched off (parking still keeps the game starting).
-		if m.Parked && m.Enabled && !a.state.FrogtechDisabled {
-			jobs[m.ID] = m.Builds
+		if m.Builds == "" || !m.Enabled || a.state.FrogtechDisabled {
+			continue
+		}
+		switch {
+		case m.Parked:
+			jobs[m.ID] = buildJob{url: m.Builds, parked: true, version: m.Version, game: m.Game}
+		case !a.state.Settings.AutoUpdate:
+		case m.Game == "",
+			cm != nil && catalog.CompareVersions(cm.Version, m.Version) > 0 && stale(cm.Game, local):
+			jobs[m.ID] = buildJob{url: m.Builds, version: m.Version, game: m.Game}
 		}
 	}
 	if changed {
@@ -678,17 +731,34 @@ func (a *App) parkStaleLocked(local string) (map[string]string, error) {
 	return jobs, a.changedLocked()
 }
 
-// installBuild installs a parked mod's build for game `local` and applies.
-func (a *App) installBuild(ctx context.Context, id, buildsURL, local string, b catalog.Build) error {
+// waitingForBuilds: a mod is parked and will take a build once one is listed
+// (the update loop then looks every parkedRetryInterval, not every hour).
+func (a *App) waitingForBuilds() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.state.FrogtechDisabled {
+		return false
+	}
+	for _, m := range a.state.Mods {
+		if m.Source == mods.SourceCatalog && m.Parked && m.Enabled && m.Builds != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// installBuild installs a mod's build for game `local` and applies.
+func (a *App) installBuild(ctx context.Context, id string, job buildJob, local string, b catalog.Build) error {
 	defer a.beginOp("Installing " + id + " for game " + local)()
 	a.mu.Lock()
 	m := a.state.Mod(id)
-	still := m != nil && m.Parked && m.Enabled && !a.state.FrogtechDisabled && m.Builds == buildsURL && a.clientVersionLocked() == local
+	still := m != nil && m.Parked == job.parked && m.Version == job.version && m.Game == job.game && m.Enabled &&
+		!a.state.FrogtechDisabled && m.Builds == job.url && a.clientVersionLocked() == local
 	a.mu.Unlock()
 	if !still {
 		return nil // changed meanwhile; the next check sees it
 	}
-	if err := a.installBuildLocked(ctx, id, buildsURL, local, b); err != nil {
+	if err := a.installBuildLocked(ctx, id, job.url, local, b); err != nil {
 		return fmt.Errorf("%s build for game %s: %w", id, local, err)
 	}
 	return a.changedLocked()

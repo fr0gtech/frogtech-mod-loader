@@ -34,3 +34,18 @@ func placeholderSHA256() string {
 	h := sha256.Sum256(PlaceholderVPK())
 	return hex.EncodeToString(h[:])
 }
+
+// StaleParkedPaks: a parked mod still has a pak in the game folder that is
+// not the placeholder (the apply that swaps them failed or hasn't run yet, e.g.
+// foreign files in the addons folder stop it). Those are files built for
+// another game build, which crash the game at start: gameinfo.gi must not
+// mount the addons folder until they are gone.
+func (s *State) StaleParkedPaks() bool {
+	ph := placeholderSHA256()
+	for _, a := range s.Applied {
+		if m := s.Mod(a.ModID); m != nil && m.Parked && a.SHA256 != ph {
+			return true
+		}
+	}
+	return false
+}

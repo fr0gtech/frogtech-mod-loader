@@ -184,14 +184,17 @@ func (a *App) EnsureGameinfo() (bool, error) {
 	}
 	a.mu.Lock()
 	off, repairing := a.modsOffLocked(), a.state.Repair != nil
+	stalePaks := a.state.StaleParkedPaks()
 	a.mu.Unlock()
 	if repairing {
 		return false, nil
 	}
-	if off {
+	if off || stalePaks {
 		changed, err := gameinfo.Unfix(dir)
-		if changed {
+		if changed && off {
 			log.Printf("gameinfo.gi: took the loader's lines out (mods off)")
+		} else if changed {
+			log.Printf("gameinfo.gi: took the loader's lines out (a parked mod's files for another game build are still in the addons folder)")
 		}
 		return changed, err
 	}
@@ -218,12 +221,14 @@ func (a *App) applyLocked() error {
 		a.mu.Unlock()
 		return ErrGameRunning
 	}
+	// (while a parked mod's stale paks are still in the folder, this takes
+	// the addons line out: the game runs without mods until they are gone)
 	if _, err := a.EnsureGameinfo(); err != nil {
 		log.Printf("gameinfo: %v", err)
 	}
 	_, addons, _ := steam.Paths(dir)
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	stale := a.state.StaleParkedPaks()
 	err := a.store.Apply(a.state, addons)
 	if err != nil {
 		a.state.PendingApply = true
@@ -232,6 +237,14 @@ func (a *App) applyLocked() error {
 		log.Printf("applied %d VPK(s) to %s", len(a.state.Applied), addons)
 	}
 	a.saveLocked()
+	fixed := stale && !a.state.StaleParkedPaks()
+	a.mu.Unlock()
+	if fixed {
+		// the placeholders are in place now: the addons line goes back
+		if _, gerr := a.EnsureGameinfo(); gerr != nil {
+			log.Printf("gameinfo: %v", gerr)
+		}
+	}
 	return err
 }
 
