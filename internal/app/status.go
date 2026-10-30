@@ -155,7 +155,7 @@ func (a *App) Status() statusView {
 			v.Waiting = "waiting for a build for game " + s.Game.ClientVersion
 		}
 		if m.ID == uikitID {
-			v.Themes, v.ThemesOn = themesText(m, a.setRebuildDueLocked(s.Game.ClientVersion), s.Game.ClientVersion, a.state.ApplyError != "")
+			v.Themes, v.ThemesOn = themesText(m, a.setRebuildDueLocked(s.Game.ClientVersion), s.Game.ClientVersion, a.state.ApplyError, !a.state.ModsOff)
 		}
 		if cm := a.catalog.Mod(m.ID); cm != nil && m.Enabled {
 			for _, c := range cm.Conflicts {
@@ -265,9 +265,9 @@ func logTail() []string {
 // themesText is the UI Kit row's line about the player's theme set. A set
 // file of the player's is in the store when SetGame is set (else the starter
 // set is); due: the wanted set waits to be built for game `local`;
-// applyFailed: the last apply into the game folder failed, so the set is
-// stored but not in the game.
-func themesText(m *mods.Mod, due bool, local string, applyFailed bool) (string, bool) {
+// applyError: why the last apply into the game folder failed, so the set is
+// stored but not in the game (only counted with mods and UI Kit on).
+func themesText(m *mods.Mod, due bool, local, applyError string, modsOn bool) (string, bool) {
 	custom := m.SetGame != ""
 	running := "the starter themes run meanwhile"
 	if custom {
@@ -282,8 +282,8 @@ func themesText(m *mods.Mod, due bool, local string, applyFailed bool) (string, 
 		return "Your new themes go in once they're built for game " + local + "; " + running, false
 	case due:
 		return "Your themes come back once they're built for game " + local + "; " + running, false
-	case custom && !m.Parked && applyFailed:
-		return "Your themes are stored but not in the game yet: the last apply failed (see the banner above)", false
+	case custom && !m.Parked && applyError != "" && m.Enabled && modsOn:
+		return "Your themes are stored but not in the game yet: the last apply failed: " + applyError, false
 	case custom && !m.Parked:
 		return "Your themes are on", true
 	}

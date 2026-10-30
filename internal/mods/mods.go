@@ -116,7 +116,8 @@ type State struct {
 	PendingApply bool         `json:"pendingApply"`
 	// ApplyError: why the last apply into the game folder failed (empty
 	// when it worked or hasn't run), so the page doesn't claim a set is on.
-	ApplyError string `json:"applyError,omitempty"`
+	// Not saved: after a restart the page goes by PendingApply alone.
+	ApplyError string `json:"-"`
 	RunKeyInit bool   `json:"runKeyInit"` // the start-with-Windows default was applied once
 	// QueueAlertInit: match alerts were switched on once (the default)
 	QueueAlertInit bool `json:"queueAlertInit"`

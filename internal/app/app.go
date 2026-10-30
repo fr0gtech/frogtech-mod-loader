@@ -167,6 +167,7 @@ func (a *App) SetGameDir(dir string) error {
 	if !strings.EqualFold(filepath.Clean(root), filepath.Clean(a.state.GameDir)) {
 		a.state.Applied = nil // a different install: nothing there is ours
 		a.state.AppliedOnce = false
+		a.state.ApplyError = ""
 	}
 	a.state.GameDir = root
 	log.Printf("game folder set to %s", root)

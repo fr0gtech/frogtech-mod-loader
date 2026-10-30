@@ -418,6 +418,9 @@ func TestSetLinkWhileGameRunning(t *testing.T) {
 	if len(ev) == 0 || ev[len(ev)-1].Level != "ok" || !strings.Contains(ev[len(ev)-1].Text, "Restart Deadlock to see your themes") {
 		t.Fatalf("events %+v", ev)
 	}
+	if a.state.ApplyError != "" {
+		t.Fatalf("a pending apply is not a failed one: %q", a.state.ApplyError)
+	}
 	if !a.state.PendingApply || !bytes.Equal(readPak(t, addons, "pak02_dir.vpk"), testutil.FakeVPK("set 6821")) {
 		t.Fatal("wrote the game folder while the game runs")
 	}
@@ -594,7 +597,7 @@ func TestSetLinkApplyBlockedByForeignPak(t *testing.T) {
 	a.HandleURL(context.Background(), "frogmod://uikit-set/"+keyA)
 	ev := a.TakeEvents()
 	if len(ev) == 0 || ev[len(ev)-1].Level != "error" || !strings.Contains(ev[len(ev)-1].Text, "pak01_dir.vpk") ||
-		strings.Contains(ev[len(ev)-1].Text, "installed") && !strings.Contains(ev[len(ev)-1].Text, "didn't install") {
+		!strings.Contains(ev[len(ev)-1].Text, "Put back / Import / Delete") || strings.Contains(ev[len(ev)-1].Text, "are installed") {
 		t.Fatalf("events %+v", ev)
 	}
 	if m := a.state.Mod("uikit"); m.Set != keyA || !bytes.Equal(storeSet(t, a), testutil.FakeVPK("set A")) {
@@ -606,10 +609,27 @@ func TestSetLinkApplyBlockedByForeignPak(t *testing.T) {
 	if err := a.DeleteForeignFile("pak01_dir.vpk"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Apply(); err != nil {
-		t.Fatal(err)
+	// (deleting applies right away)
+	if a.state.ApplyError != "" || a.state.PendingApply {
+		t.Fatalf("apply state not cleared: %q", a.state.ApplyError)
 	}
 	if v := uikitView(t, a); !v.ThemesOn {
 		t.Fatalf("set not on after the apply: %+v", v)
+	}
+}
+
+// Any other apply failure: the error comes back as it is, the page says why.
+func TestSetLinkApplyFailsOtherwise(t *testing.T) {
+	s, dataDir, _, addons := buildsSetup(t)
+	s.site.put(keyA, testutil.FakeVPK("set A"))
+	a := restart(t, dataDir)
+	os.RemoveAll(addons)
+	os.WriteFile(addons, []byte("not a folder"), 0o644)
+	err := a.InstallSet(context.Background(), keyA)
+	if err == nil || strings.Contains(err.Error(), "didn't install") {
+		t.Fatalf("err %v", err)
+	}
+	if v := uikitView(t, a); v.ThemesOn || !strings.Contains(v.Themes, "last apply failed") {
+		t.Fatalf("page: %+v", v)
 	}
 }
