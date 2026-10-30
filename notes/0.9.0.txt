@@ -1,0 +1,2 @@
+New: after a Deadlock update, UI Kit is switched off until a version made for the new game is out, so the game always starts; the loader then installs that version by itself
+UI Kit installs the build made for your version of the game
