@@ -1,0 +1,6 @@
+New: downloads show real progress (size, speed, time left) and can be stopped; installing the same file again continues where it stopped
+A download that breaks or stalls continues by itself, and big mods no longer fail after 10 minutes
+New: "Check for updates" for a single mod in its menu; clicking a mod opens its details
+GameBanana mods with several files: you pick the file, and each file's description is easy to read
+New: config mods install too (a mod that ships a gameinfo.gi): its settings are merged into the game's file, come back after game updates, and are gone again when you switch the mod off
+New: a config mod's values can be changed in the loader (More > Change its game settings), with the author's description and the game's own value next to each
