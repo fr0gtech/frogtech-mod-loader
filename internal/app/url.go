@@ -146,7 +146,7 @@ func (a *App) installFromLink(ctx context.Context, id string) (string, error) {
 		return "", fmt.Errorf("%q is not a Frogtech mod", id)
 	}
 	name := cm.Name + " " + cm.Version
-	done := a.beginOp("Installing " + cm.Name)
+	ctx, done := a.beginInstall(ctx, "Installing "+cm.Name)
 	defer done()
 	verb := "installed"
 	if cur != nil && catalog.CompareVersions(cm.Version, cur.Version) <= 0 {

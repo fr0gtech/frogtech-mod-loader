@@ -155,6 +155,7 @@ button.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px
 /* mod rows */
 .mrow { display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: transparent; border: 1px solid var(--border); border-radius: var(--rc); transition: border-color .12s, background .12s; }
 .mrow:hover { border-color: #3a3a40; background: color-mix(in oklab, var(--slate) 50%, transparent); }
+.mrow.opens .thumbs, .mrow.opens .info { cursor: pointer; }
 .mrow.off .thumbs, .mrow.off .info { opacity: .5; }
 .mrow.sel { border-color: color-mix(in oklab, var(--sky) 60%, transparent); background: color-mix(in oklab, var(--sky) 7%, transparent); }
 .mrow.dragging { opacity: .3; }
@@ -213,6 +214,16 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--sec); outline: none; }
 .menu button.red { color: var(--bad); }
 .menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
+/* the running download or install: a strip along the bottom of the window */
+#dock { flex: none; position: relative; z-index: 80; box-sizing: border-box; height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 18px; background: var(--card); border-top: 1px solid var(--border); font-size: 14px; }
+#dock .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+#dock .nums { color: var(--ash); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#dock .bar { position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: var(--border); overflow: hidden; }
+#dock .bar i { display: block; height: 100%; width: 0; background: var(--primary); transition: width .4s linear; }
+#dock .bar.unknown i { width: 30%; transition: none; animation: slide 1.3s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(334%); } }
+body.docked #toasts { bottom: 66px; }
+body.docked .modal { bottom: 52px; } /* a dialog leaves the strip (and its Stop) free */
 #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(400px, calc(100% - 36px)); }
 .toast { --c: var(--jade); display: flex; gap: 10px; align-items: flex-start; background: color-mix(in srgb, var(--c) 8%, var(--pop)); border: 1px solid color-mix(in srgb, var(--c) 32%, var(--border)); border-radius: var(--rc); padding: 11px 13px; cursor: pointer; animation: tin .18s ease-out; }
 .toast.error { --c: var(--coral); } .toast.info { --c: var(--sky); }
@@ -285,8 +296,25 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 .gallery.blur { position: relative; overflow: hidden; border-radius: var(--r); cursor: pointer; }
 .gallery.blur .big { cursor: pointer; }
 .text { white-space: pre-wrap; color: var(--ash); font-size: 14px; line-height: 1.6; max-height: 300px; overflow: auto; }
-.files .file { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.files .file { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); }
 .files .file:first-child { border-top: none; }
+.files .what { font-size: 15px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+.files .fname { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.files .what + .fname { color: var(--ash); margin-top: 4px; }
+.files .fmeta { color: var(--ash); font-size: 13px; margin-top: 3px; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.files .fmeta .keep { color: var(--primary); }
+.pick { color: var(--ash); font-size: 14px; margin: 0 0 4px; }
+.cfg .list { max-height: min(60vh, 620px); overflow: auto; margin-top: 12px; padding-right: 6px; }
+.cfg .sec { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ash); padding: 18px 0 6px; position: sticky; top: 0; background: var(--pop); z-index: 1; }
+.cfg .row { display: flex; gap: 16px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); }
+.cfg .row .txt { flex: 1; min-width: 0; }
+.cfg .row .key { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.cfg .row .note { font-size: 14px; line-height: 1.45; color: var(--text); margin-top: 3px; overflow-wrap: anywhere; }
+.cfg .row .fmeta { color: var(--ash); font-size: 13px; margin-top: 3px; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.cfg .row .ctl { display: flex; gap: 8px; align-items: center; flex: none; }
+.cfg .row .ctl input[type=text] { width: 96px; flex: none; text-align: right; }
+.cfg .row.unset .key, .cfg .row.unset .note { color: var(--ash); }
+.cfg .none { color: var(--ash); padding: 24px 0; }
 .det h4 { font-size: 14px; margin: 16px 0 4px; }
 
 @media (max-width: 900px) {
@@ -345,8 +373,8 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
 
     <div class="card">
       <div class="head"><h2>Add a mod from a file or link</h2></div>
-      <div class="drop" id="drop" tabindex="0"><span id="dropIcon"></span><span>Drop .zip, .rar, .7z or .vpk files here, or click to choose</span>
-        <input type="file" id="file" accept=".zip,.rar,.7z,.vpk" multiple hidden>
+      <div class="drop" id="drop" tabindex="0"><span id="dropIcon"></span><span>Drop .zip, .rar, .7z, .vpk or gameinfo.gi files here, or click to choose</span>
+        <input type="file" id="file" accept=".zip,.rar,.7z,.vpk,.gi" multiple hidden>
       </div>
       <div class="row" style="margin-top:12px">
         <input type="text" id="gbUrl" placeholder="Paste a GameBanana link">
@@ -450,6 +478,7 @@ details.adv[open] > summary svg { transform: rotate(90deg); }
   </div>
 </main>
 </div>
+<div id="dock" class="hidden" role="status"></div>
 </div>
 <div class="edge n" data-ht="12"></div><div class="edge s" data-ht="15"></div><div class="edge w" data-ht="10"></div><div class="edge e" data-ht="11"></div>
 <div class="edge nw" data-ht="13"></div><div class="edge ne" data-ht="14"></div><div class="edge sw" data-ht="16"></div><div class="edge se" data-ht="17"></div>
@@ -673,7 +702,7 @@ async function act(path, body, okMsg) {
     if (okMsg) toast(typeof okMsg === "function" ? okMsg(r) : okMsg, "ok");
     return r;
   } catch (e) {
-    if (e.message !== "not connected") toast(e.message, "error");
+    if (e.message !== "not connected") toast(e.message, e.data && e.data.stopped ? "info" : "error");
     throw e;
   } finally { refresh(); }
 }
@@ -690,7 +719,7 @@ document.addEventListener("click", (e) => {
 });
 window.open = (url) => { if (/^https?:/i.test(String(url))) openExternal(String(url)); return null; };
 
-function fmtSize(n) { return n > 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+function fmtSize(n) { return n >= 1 << 30 ? (n / (1 << 30)).toFixed(2) + " GB" : n > 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
 function fmtNum(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n || 0); }
 function fmtDate(ts) { return ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""; }
 const gbImg = (u) => (typeof u === "string" && u.startsWith("https://images.gamebanana.com/") ? u : null);
@@ -736,8 +765,7 @@ function banner(kind, title, desc, ...btns) {
 function render() {
   if (!S) return;
   $("gate").classList.add("hidden");
-  $("busy").replaceChildren(); $("busy").classList.toggle("hidden", !S.busy);
-  if (S.busy) $("busy").append(h("span", { class: "spin" }), S.busy);
+  if (!P.busy !== !S.busy) pollProgress();
   $("modCount").textContent = S.mods.length ? String(S.mods.length) : "";
   if (document.activeElement !== $("modsOn")) $("modsOn").checked = S.modsOn;
   $("modsSwitchLabel").textContent = S.modsOn ? "Mods on" : "Mods off";
@@ -827,6 +855,113 @@ function modChips(m) {
   return [];
 }
 
+// What a click on an installed mod opens: its details here in the window
+// (GameBanana, Frogtech, a repository), else its web page; null for a file
+// of your own.
+function modOpener(m) {
+  if (m.gbId) return () => openDetails(m.gbModel || "Mod", m.gbId);
+  if (m.source === "catalog") { const c = S.catalog.find((x) => x.id === m.id); if (c) return () => openCatalogDetails(c, S.repos[0]); }
+  if (m.source === "repo") { const r = repoOf(m.repo), c = r && r.mods.find((x) => x.id === m.repoMod); if (c) return () => openCatalogDetails(c, r); }
+  if (m.page) return () => openExternal(m.page);
+  return null;
+}
+const updateMod = (m) => quiet(act("mods/update", { id: m.id }, m.name + " updated"));
+async function checkMod(m) {
+  toast("Checking " + m.name + "…", "info");
+  try {
+    const r = await api("mods/check", { id: m.id });
+    await refresh();
+    if (r.update) toast("There is an update for " + m.name + ": " + r.update, "info", { label: "Update", run: () => updateMod(m) });
+    else if (r.note) toast(m.name + ": " + r.note, "info");
+    else toast(m.name + " is up to date", "ok");
+  } catch (e) {
+    if (e.message !== "not connected") toast("Couldn't check " + m.name + ": " + e.message, "error");
+  }
+}
+
+// ---- a config mod's game settings ----
+// The variables of the mod's gameinfo.gi with the author's own notes; a
+// change is saved right away and used the next time the game starts.
+const isBool = (v) => v === "true" || v === "false";
+async function openConfig(m) {
+  const box = h("div", { class: "box wide cfg", role: "dialog", "aria-modal": "true" }, h("div", { class: "skel", style: "height:34px;width:55%" }),
+    h("div", { class: "skel", style: "height:360px;margin-top:16px" }));
+  const entry = openModal(box);
+  let entries;
+  try { entries = (await api("mods/config?id=" + encodeURIComponent(m.id))).entries; }
+  catch (e) { box.replaceChildren(xButton(entry.close), h("h3", {}, "Couldn't read the settings"), h("div", { class: "body" }, e.message)); return; }
+  const list = h("div", { class: "list" });
+  const search = h("input", { type: "search", placeholder: "Search " + entries.length + " settings", "aria-label": "Search settings" });
+  const onlyMine = h("input", { type: "checkbox" });
+  const save = async (e, value) => {
+    try { await api("mods/config", { id: m.id, set: { [e.key]: value } }); }
+    catch (err) { if (err.message !== "not connected") toast(err.message, "error"); draw(); return; }
+    if (value === null) delete e.set; else e.set = value;
+    draw(); refresh();
+  };
+  const row = (e) => {
+    const mine = e.set !== undefined && e.set !== null;
+    const active = mine || !e.off;
+    const val = mine ? e.set : e.value;
+    let ctl;
+    if (!active) ctl = h("button", { class: "sm", onclick: () => save(e, e.value), title: "The author left this one switched off. This sets it to " + e.value }, "Use " + e.value);
+    else if (isBool(val) && (!e.default || isBool(e.default) || e.default === "0" || e.default === "1")) {
+      ctl = h("label", { class: "switch", title: val },
+        h("input", { type: "checkbox", checked: val === "true", "aria-label": e.key, onchange: (ev) => {
+          const v = ev.target.checked ? "true" : "false";
+          save(e, !e.off && v === e.value ? null : v);
+        } }), h("span"));
+    } else {
+      const inp = h("input", { type: "text", value: val, "aria-label": e.key, spellcheck: "false" });
+      inp.addEventListener("change", () => {
+        const v = inp.value.trim();
+        if (v === "") { inp.value = val; return; }
+        save(e, !e.off && v === e.value ? null : v);
+      });
+      inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") inp.blur(); });
+      ctl = inp;
+    }
+    return h("div", { class: "row" + (active ? "" : " unset") },
+      h("div", { class: "txt" },
+        h("div", { class: "key" }, e.key),
+        e.note ? h("div", { class: "note" }, e.note) : null,
+        h("div", { class: "fmeta" },
+          e.default ? h("span", {}, "Game's own value: " + e.default) : null,
+          mine && !e.off ? h("span", {}, "The mod's value: " + e.value) : null,
+          mine ? h("span", { class: "keep" }, "Changed by you") : null,
+          !active ? h("span", {}, "Not set by the mod") : null)),
+      h("div", { class: "ctl" },
+        mine ? h("button", { class: "ghost sm", onclick: () => save(e, null), title: e.off ? "Don't set it, as the mod has it" : "Back to the mod's value" }, "Undo") : null,
+        active && e.default && val !== e.default && !isBool(val) ? h("button", { class: "ghost sm", onclick: () => save(e, e.default), title: "Set it to the game's own value" }, "Game's own") : null,
+        ctl));
+  };
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    const top = list.scrollTop;
+    const kids = [];
+    let sec = null;
+    for (const e of entries) {
+      if (onlyMine.checked && (e.set === undefined || e.set === null)) continue;
+      if (q && !(e.key.toLowerCase().includes(q) || (e.note || "").toLowerCase().includes(q) || (e.section || "").toLowerCase().includes(q))) continue;
+      if ((e.section || "") !== sec) { sec = e.section || ""; if (sec) kids.push(h("div", { class: "sec" }, sec)); }
+      kids.push(row(e));
+    }
+    if (!kids.length) kids.push(h("div", { class: "none" }, onlyMine.checked && !q ? "You haven't changed anything." : "Nothing matches."));
+    list.replaceChildren(...kids);
+    list.scrollTop = top;
+  }
+  search.addEventListener("input", draw);
+  onlyMine.addEventListener("change", draw);
+  box.replaceChildren(xButton(entry.close),
+    h("h3", {}, "Game settings of " + m.name),
+    h("p", { class: "pick" }, "These are the values this mod puts in the game. The descriptions are the mod author's own notes. A change is saved right away and counts the next time Deadlock starts."),
+    h("div", { style: "display:flex;gap:14px;align-items:center;margin-top:10px" }, search,
+      h("label", { style: "display:flex;gap:8px;align-items:center;white-space:nowrap;color:var(--ash);font-size:14px" }, onlyMine, "Only my changes")),
+    list);
+  draw();
+  search.focus();
+}
+
 // ---- your mods ----
 function renderMods() {
   const L = $("mods"); L.replaceChildren();
@@ -844,9 +979,12 @@ function renderMods() {
   S.mods.forEach((m, i) => {
     const moveTo = (j) => { const a = ids.filter((x) => x !== m.id); a.splice(j, 0, m.id); reorder(a); };
     const menuBtn = h("button", { class: "ghost icon", title: "More", "aria-label": "More for " + m.name }, icon("more"));
+    const open = modOpener(m);
     menuBtn.addEventListener("click", () => showMenu(menuBtn, [
-      m.update && { label: "Update to " + m.update, run: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) },
-      m.gbId && { label: "Details", run: () => openDetails(m.gbModel || "Mod", m.gbId) },
+      m.update && { label: "Update to " + m.update, run: () => updateMod(m) },
+      m.source !== "local" && !m.update && { label: "Check for updates", run: () => checkMod(m) },
+      m.config && { label: "Change its game settings", run: () => openConfig(m) },
+      open && { label: "Details", run: open },
       m.page && { label: "Open its web page", run: () => openExternal(m.page) },
       { label: "Move to the top", disabled: i === 0, run: () => moveTo(0) },
       { label: "Move up", disabled: i === 0, run: () => moveTo(i - 1) },
@@ -857,7 +995,7 @@ function renderMods() {
     ]));
     const cb = h("input", { type: "checkbox", checked: selected.has(m.id), "aria-label": "Select " + m.name });
     const chips = modChips(m);
-    const row = h("div", { class: "mrow" + (m.enabled ? "" : " off") + (selected.has(m.id) ? " sel" : ""), draggable: "true" },
+    const row = h("div", { class: "mrow" + (m.enabled ? "" : " off") + (selected.has(m.id) ? " sel" : "") + (open ? " opens" : ""), draggable: "true" },
       cb,
       h("span", { class: "grip", title: "Drag to reorder" }, icon("grip")),
       rowThumb(m.name, m.image, m.source === "local"),
@@ -866,6 +1004,7 @@ function renderMods() {
         h("div", { class: "meta" }, h("span", {}, sourceLabel(m)),
           m.version ? h("span", { class: "brass" }, "v" + m.version) : null,
           ...chips,
+          m.config ? h("span", { class: "chip plain", title: "This mod changes game settings: its gameinfo.gi values are merged into the game's file while it is on. Off, or Start without mods, gives the game's own settings back." }, "Game settings") : null,
           m.gbPinned ? h("span", { class: "chip plain", title: "You picked an older file, so it doesn't update" }, "Kept on this file") : null,
           m.update ? h("span", { style: "color:var(--primary)" }, "Update available") : null,
           m.waiting ? h("span", { style: "color:var(--brass)", title: "Deadlock was updated and this mod's files were made for the previous version, so they are out of the game until a version for this one is out. It installs by itself." },
@@ -874,11 +1013,13 @@ function renderMods() {
             : { style: "color:var(--brass)", title: "Your themes from mods.frogtech.dev are built for each game version and UI Kit release. Until the site has built them for this one, UI Kit keeps the themes that were already in place, so the game always starts." }, m.themes) : null,
           (m.conflicts || []).length ? h("span", { style: "color:var(--brass)" }, "Doesn't work with " + m.conflicts.join(", ")) : null)),
       h("div", { class: "side" },
-        m.update ? h("button", { class: "primary sm", onclick: () => quiet(act("mods/update", { id: m.id }, m.name + " updated")) }, "Update") : null,
+        m.update ? h("button", { class: "primary sm", onclick: () => updateMod(m) }, "Update") : null,
         h("label", { class: "switch", title: m.enabled ? "On" : "Off" },
           h("input", { type: "checkbox", checked: m.enabled, "aria-label": "Turn " + m.name + " on or off", onchange: (e) => quiet(act("mods/enable", { id: m.id, enabled: e.target.checked })) }), h("span")),
         menuBtn));
     cb.addEventListener("change", () => { cb.checked ? selected.add(m.id) : selected.delete(m.id); row.classList.toggle("sel", cb.checked); renderBulkbar(); });
+    // A click on the picture or the text opens the mod; the controls keep their own clicks.
+    if (open) row.addEventListener("click", (e) => { if (e.target.closest(".thumbs, .info") && !e.target.closest("button, a, input, label")) open(); });
     row.addEventListener("dragstart", (e) => { dragging = true; row.classList.add("dragging"); e.dataTransfer.setData("text/x-mod", m.id); e.dataTransfer.effectAllowed = "move"; });
     row.addEventListener("dragend", () => { dragging = false; row.classList.remove("dragging"); renderMods(); });
     row.addEventListener("dragover", (e) => { if (e.dataTransfer.types.includes("text/x-mod")) { e.preventDefault(); row.classList.add("dropbefore"); } });
@@ -1319,6 +1460,64 @@ async function refresh() {
   } catch (e) { /* gate / toast */ }
 }
 
+// ---- the running operation: the title bar says what runs; a download or an
+// install also gets the strip at the bottom with a bar, numbers and Stop ----
+let P = {}, speedLog = [], progKey = "";
+function fmtLeft(sec) {
+  if (!isFinite(sec) || sec <= 0) return "";
+  if (sec < 60) return "under a minute left";
+  if (sec < 3600) return "about " + Math.round(sec / 60) + " min left";
+  return "about " + (sec / 3600).toFixed(1) + " h left";
+}
+function renderProgress() {
+  const busy = $("busy");
+  busy.replaceChildren(); busy.classList.toggle("hidden", !P.busy);
+  if (P.busy) busy.append(h("span", { class: "spin" }), P.busy);
+  const dock = $("dock"), on = !!P.phase;
+  dock.classList.toggle("hidden", !on); document.body.classList.toggle("docked", on);
+  if (!on) { dock.replaceChildren(); progKey = ""; speedLog = []; return; }
+  // The speed is the average over the last few seconds of this step.
+  const key = P.phase + "|" + (P.item || "");
+  if (key !== progKey) { progKey = key; speedLog = []; dock.replaceChildren(); }
+  const now = performance.now();
+  speedLog.push([now, P.done]);
+  while (speedLog.length > 2 && now - speedLog[0][0] > 6000) speedLog.shift();
+  const [t0, d0] = speedLog[0], speed = now - t0 > 900 ? Math.max(0, (P.done - d0) / ((now - t0) / 1000)) : 0;
+  const name = P.item || "";
+  const what = { download: "Downloading " + name, unpack: "Unpacking " + name, apply: "Putting the files in the game" }[P.phase] || P.busy;
+  let nums = "";
+  if (P.phase !== "apply") {
+    nums = P.total ? fmtSize(P.done) + " of " + fmtSize(P.total) : P.done ? fmtSize(P.done) : "";
+    if (speed > 0) nums += " · " + fmtSize(speed) + "/s";
+    const left = P.total && speed > 0 ? fmtLeft((P.total - P.done) / speed) : "";
+    if (left) nums += " · " + left;
+  }
+  if (!dock.firstChild) {
+    dock.append(h("div", { class: "bar" }, h("i")), h("span", { class: "what" }), h("span", { class: "nums" }), h("span", { class: "grow" }),
+      h("button", { class: "outline sm", title: "Stops it. What is downloaded so far is kept: install it again to continue from there.",
+        onclick: async (e) => { e.currentTarget.disabled = true; await quiet(api("cancel", {})); pollProgress(); } }, "Stop"));
+  }
+  const bar = dock.querySelector(".bar"), known = P.total > 0 && P.phase !== "apply";
+  bar.classList.toggle("unknown", !known);
+  bar.firstChild.style.width = known ? Math.min(100, (P.done / P.total) * 100).toFixed(1) + "%" : "";
+  dock.querySelector(".what").textContent = what;
+  dock.querySelector(".nums").textContent = nums;
+  const stop = dock.querySelector("button");
+  stop.classList.toggle("hidden", !P.canStop);
+  if (P.canStop) stop.disabled = false;
+}
+let progBusy = false;
+async function pollProgress() {
+  if (progBusy) return;
+  progBusy = true;
+  try {
+    const was = !!P.busy;
+    P = await api("progress");
+    renderProgress();
+    if (was && !P.busy) refresh();
+  } catch (e) { /* ignore */ } finally { progBusy = false; }
+}
+
 // Events from the loader (frogmod:// links, background results).
 async function pollEvents() {
   try {
@@ -1457,11 +1656,17 @@ function thumbBox(src, nsfw) {
   else box.append(h("div", { class: "noimg" }, icon("music")));
   return box;
 }
-function installBtn(model, id, label, fileId, name, cls) {
+// pick: the button stands for the whole mod (a tile in Browse), so a mod with
+// several files opens its details to choose one instead of taking the newest.
+function installBtn(model, id, label, fileId, name, cls, pick) {
   const b = h("button", { class: cls || "primary sm" }, icon("download"), label || "Install");
   b.addEventListener("click", async (e) => {
     e.stopPropagation();
     b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Installing");
+    if (pick) {
+      const d = await api("browse/item?model=" + encodeURIComponent(model) + "&id=" + id).catch(() => null);
+      if (d && d.files.length > 1) { b.disabled = false; b.replaceChildren(icon("download"), label || "Install"); openDetails(model, id); return; }
+    }
     try {
       await act("gamebanana/add", { model, gbId: id, fileId: fileId || 0 }, (name || "Mod") + " installed");
       b.replaceWith(h("span", { class: "badge-ok" }, icon("check"), "Installed"));
@@ -1479,7 +1684,7 @@ function tile(it) {
       h("div", { class: "by" }, "by " + (it.author || "unknown")),
       h("div", { class: "stats" }, h("span", { title: "Likes" }, icon("heart"), fmtNum(it.likes)), h("span", { title: "Views" }, icon("eye"), fmtNum(it.views)),
         it.updated ? h("span", { title: "Last updated" }, fmtDate(it.updated)) : null),
-      h("div", { class: "foot" }, it.installed ? h("span", { class: "badge-ok" }, icon("check"), "Installed") : installBtn(it.model, it.id, "Install", 0, it.name),
+      h("div", { class: "foot" }, it.installed ? h("span", { class: "badge-ok" }, icon("check"), "Installed") : installBtn(it.model, it.id, "Install", 0, it.name, null, true),
         h("span", { class: "grow" }), h("button", { class: "ghost sm" }, "Details"))));
   if (it.nsfw) t.querySelector(".thumb").append(h("span", { class: "tag" }, chip("Mature", "access")));
   t.addEventListener("click", () => openDetails(it.model, it.id));
@@ -1509,12 +1714,19 @@ async function openDetails(model, id) {
     gallery = h("div", { class: "gallery" + (hide ? " blur" : "") }, big, imgs.length > 1 ? strip : null);
     big.addEventListener("click", () => { if (gallery.classList.contains("blur")) gallery.classList.remove("blur"); else lightbox(full, cur); });
   }
+  // Each file: what its author says it is (when they do), then its name and facts.
+  const many = d.files.length > 1;
   const files = h("div", { class: "files" }, d.files.length ? d.files.map((f, i) => h("div", { class: "file" },
-    h("div", { class: "grow", style: "min-width:0" }, h("div", { class: "path", style: "color:var(--text)" }, f._sFile),
-      h("div", { class: "ash", style: "font-size:13px" }, fmtSize(f._nFilesize) + " · " + fmtDate(f._tsDateAdded) + (i === 0 ? " · newest, kept up to date" : " · older, won't update") +
-        (f._sDescription ? " · " + f._sDescription : ""))),
+    h("div", { class: "grow", style: "min-width:0" },
+      f._sDescription ? h("div", { class: "what" }, f._sDescription) : null,
+      h("div", { class: "fname" }, f._sFile),
+      h("div", { class: "fmeta" }, f._sVersion ? h("span", { class: "brass" }, "v" + f._sVersion) : null,
+        h("span", {}, fmtSize(f._nFilesize)), h("span", {}, "added " + fmtDate(f._tsDateAdded)),
+        h("span", {}, fmtNum(f._nDownloadCount) + " downloads"),
+        many ? (i === 0 ? h("span", { class: "keep", title: "The loader updates a mod to its newest file. Pick this one to get updates." }, "Newest: gets updates")
+          : h("span", { title: "An older file stays as it is: the loader doesn't replace it when the mod gets a new file." }, "Older: stays on this file")) : null)),
     d.installed && d.installedFileId === f._idRow ? h("span", { class: "badge-ok" }, icon("check"), "Installed")
-      : installBtn(d.model, d.id, d.installed ? "Use this one" : "Install", i === 0 ? 0 : f._idRow, d.name, i === 0 ? "primary" : "outline")))
+      : installBtn(d.model, d.id, d.installed ? "Use this one" : "Install", i === 0 ? 0 : f._idRow, d.name, i === 0 && !many ? "primary" : "outline")))
     : h("div", { class: "ash" }, "There's nothing to download."));
   box.replaceChildren(h("div", {},
     xButton(entry.close),
@@ -1528,11 +1740,13 @@ async function openDetails(model, id) {
       h("span", { title: "Views" }, icon("eye"), fmtNum(d.views)), h("span", {}, "updated " + fmtDate(d.updated))),
     gallery,
     d.audio && /^https:\/\/files\.gamebanana\.com\//.test(d.audio) ? h("audio", { controls: true, src: d.audio, style: "width:100%;margin-top:10px" }) : null,
-    h("h4", {}, "Download"), files,
+    h("h4", {}, "Download"),
+    many ? h("p", { class: "pick" }, "This mod has " + d.files.length + " files. Pick the one you want.") : null,
+    files,
     d.text || d.summary ? h("h4", {}, "About") : null,
     d.text || d.summary ? h("div", { class: "text" }, d.text || d.summary) : null,
     h("div", { class: "row", style: "margin-top:16px" }, h("button", { class: "ghost sm", onclick: () => openExternal(d.page) }, "Open on GameBanana", icon("ext")))));
-  const first = box.querySelector(".files button.primary"); if (first) first.focus();
+  const first = box.querySelector(".files button"); if (first) first.focus();
 }
 
 
@@ -1565,7 +1779,7 @@ $("quitBtn").addEventListener("click", async () => {
   if (!await ask({ key: "quit", title: "Quit the loader?", ok: "Quit", danger: true,
     body: "Your mods stay installed, but they won't be switched back on after game updates until the loader runs again." })) return;
   await quiet(api("quit", {}));
-  clearInterval(timer); clearInterval(evTimer);
+  clearInterval(timer); clearInterval(evTimer); clearInterval(progTimer);
   document.body.replaceChildren(h("main", {}, h("div", { class: "empty", style: "margin-top:60px" }, h("h3", {}, "The loader has stopped"), "Start it again from the Start menu or the desktop.")));
 });
 for (const el of document.querySelectorAll("[data-setting]")) {
@@ -1682,6 +1896,7 @@ refresh();
 pollEvents();
 const timer = setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 const evTimer = setInterval(() => { if (!document.hidden) pollEvents(); }, 1000);
+const progTimer = setInterval(() => { if (!document.hidden) pollProgress(); }, 500);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); pollEvents(); } });
 </script>
 </body>

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -287,12 +286,14 @@ func (a *App) installRepoLocked(ctx context.Context, repoID, modID string) error
 	if _, err := catalog.CheckURL(cm.URL); err != nil {
 		return fmt.Errorf("%s: download address %v", cm.Name, err)
 	}
-	tmp, err := a.TempFile("repo-*.download")
+	tmp, err := a.downloadPath(cm.SHA256)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp)
-	if err := fetch.DownloadAuth(ctx, cm.URL, tmp, fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}, &fetch.Auth{Origin: origin, Key: key}); err != nil {
+	defer dropDownload(ctx, tmp)
+	a.prog.name(cm.Name)
+	job := fetch.Job{URL: cm.URL, Dest: tmp, Sum: fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}, Auth: &fetch.Auth{Origin: origin, Key: key}, KeepPartial: true}
+	if err := job.Run(ctx); err != nil {
 		var hs *fetch.StatusError
 		if errors.As(err, &hs) && (hs.Code == 401 || hs.Code == 403) {
 			return fmt.Errorf("%s: key not accepted for this download", cm.Name)
@@ -301,14 +302,15 @@ func (a *App) installRepoLocked(ctx context.Context, repoID, modID string) error
 	}
 	m := &mods.Mod{ID: repoID + "/" + modID, Source: mods.SourceRepo, Repo: repoID, RepoMod: modID, Name: cm.Name, Version: cm.Version,
 		Page: cm.Page, Image: cm.Image}
-	return a.installFiles(m, tmp, modID+".vpk")
+	return a.installFiles(ctx, m, tmp, modID+".vpk")
 }
 
 // InstallRepoMod installs (or updates) a repository mod and enables it.
 func (a *App) InstallRepoMod(ctx context.Context, repoID, modID string) error {
-	defer a.beginOp("Installing " + modID)()
+	ctx, done := a.beginInstall(ctx, "Installing "+modID)
+	defer done()
 	if err := a.installRepoLocked(ctx, repoID, modID); err != nil {
-		return err
+		return a.stopped(ctx, err)
 	}
 	a.mu.Lock()
 	if m := a.state.Mod(repoID + "/" + modID); m != nil {

@@ -206,6 +206,46 @@ func routes(a *app.App) http.Handler {
 	})
 	api.HandleFunc("POST /api/catalog/install", jsonOp(func(r *http.Request, b body) error { return a.InstallCatalogMod(r.Context(), b.ID) }))
 	api.HandleFunc("POST /api/mods/update", jsonOp(func(r *http.Request, b body) error { return a.UpdateMod(r.Context(), b.ID) }))
+	api.HandleFunc("POST /api/mods/check", func(w http.ResponseWriter, r *http.Request) {
+		var b body
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&b); err != nil {
+			httpErr(w, err)
+			return
+		}
+		res, err := a.CheckMod(r.Context(), b.ID)
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "update": res.Update, "note": res.Note})
+	})
+	api.HandleFunc("GET /api/mods/config", func(w http.ResponseWriter, r *http.Request) {
+		entries, err := a.ConfigEntries(r.URL.Query().Get("id"))
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "entries": entries})
+	})
+	api.HandleFunc("POST /api/mods/config", func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			ID  string             `json:"id"`
+			Set map[string]*string `json:"set"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&b); err != nil {
+			httpErr(w, err)
+			return
+		}
+		if err := a.SetConfigValues(b.ID, b.Set); err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	api.HandleFunc("GET /api/progress", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.Progress()) })
+	api.HandleFunc("POST /api/cancel", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"ok": true, "stopped": a.Cancel()})
+	})
 	api.HandleFunc("POST /api/mods/enable", jsonOp(func(r *http.Request, b body) error { return a.SetEnabled(b.ID, b.Enabled) }))
 	api.HandleFunc("POST /api/mods/remove", jsonOp(func(r *http.Request, b body) error { return a.Remove(b.ID) }))
 	api.HandleFunc("POST /api/mods/order", jsonOp(func(r *http.Request, b body) error { return a.SetOrder(b.IDs) }))
@@ -517,8 +557,8 @@ func handleUpload(a *app.App, w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		low := strings.ToLower(name)
-		if !strings.HasSuffix(low, ".zip") && !strings.HasSuffix(low, ".vpk") && !strings.HasSuffix(low, ".rar") && !strings.HasSuffix(low, ".7z") {
-			httpErr(w, fmt.Errorf("%s: only .zip, .rar, .7z and .vpk files can be added", name))
+		if !strings.HasSuffix(low, ".zip") && !strings.HasSuffix(low, ".vpk") && !strings.HasSuffix(low, ".rar") && !strings.HasSuffix(low, ".7z") && !strings.HasSuffix(low, ".gi") {
+			httpErr(w, fmt.Errorf("%s: only .zip, .rar, .7z, .vpk and gameinfo.gi files can be added", name))
 			return
 		}
 		tmp, err := a.TempFile("upload-*")
@@ -557,7 +597,8 @@ func httpErr(w http.ResponseWriter, err error) {
 		code = http.StatusConflict
 	}
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error(), "gameRunning": errors.Is(err, app.ErrGameRunning)})
+	json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error(), "gameRunning": errors.Is(err, app.ErrGameRunning),
+		"stopped": errors.Is(err, app.ErrStopped)})
 }
 
 func reply(w http.ResponseWriter, err error) {

@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -62,6 +64,7 @@ type App struct {
 	noModsFrom, noModsTo time.Time // the last "Start without mods" run
 
 	opMu     sync.Mutex // serializes operations that change files
+	prog     progress   // what the running operation is doing (own lock)
 	checkNow chan struct{}
 	quit     chan struct{}
 	// queueLogMissing: the match alert sees no console.log being written
@@ -109,6 +112,7 @@ func NewApp(dataDir string) (*App, error) {
 			log.Printf("game detection: %v", err)
 		}
 	}
+	a.cleanTemp()
 	return a, a.saveLocked()
 }
 
@@ -143,10 +147,25 @@ func (a *App) beginOp(what string) func() {
 	a.busy = what
 	a.mu.Unlock()
 	return func() {
+		a.prog.clear()
 		a.mu.Lock()
 		a.busy = ""
 		a.mu.Unlock()
 		a.opMu.Unlock()
+	}
+}
+
+// beginInstall is beginOp for an operation that downloads or unpacks: the
+// returned context reports its progress to the page and ends when the user
+// stops the operation (Cancel).
+func (a *App) beginInstall(ctx context.Context, what string) (context.Context, func()) {
+	done := a.beginOp(what)
+	ctx, cancel := context.WithCancel(ctx)
+	a.prog.start(cancel)
+	ctx = fetch.WithProgress(ctx, func(n, total int64) { a.prog.set(phaseDownload, n, total) })
+	return ctx, func() {
+		cancel()
+		done()
 	}
 }
 
@@ -202,11 +221,127 @@ func (a *App) EnsureGameinfo() (bool, error) {
 	if st, err := steam.ReadAppState(dir); err == nil && st.Working() {
 		return false, nil // patched once Steam is done
 	}
-	changed, err := gameinfo.Fix(dir)
-	if changed {
+	cfgs := a.configs()
+	changed, err := gameinfo.Fix(dir, cfgs...)
+	if changed && len(cfgs) > 0 {
+		var names []string
+		for _, c := range cfgs {
+			if c.Name != "" {
+				names = append(names, c.Name)
+			}
+		}
+		log.Printf("gameinfo.gi: added the %s search path, the game's Mod/Write paths and the game settings of %s", gameinfo.AddonsPath, strings.Join(names, ", "))
+	} else if changed {
 		log.Printf("gameinfo.gi: added the %s search path and the game's Mod/Write paths", gameinfo.AddonsPath)
 	}
 	return changed, err
+}
+
+// configs are the gameinfo.gi files of the enabled config mods, in list
+// order (the first one wins where two set the same key).
+func (a *App) configs() []gameinfo.Config {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []gameinfo.Config
+	for _, m := range a.state.Mods {
+		if !m.Enabled || m.Config == "" || m.Parked {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(a.store.ModDir(m.ID), mods.ConfigName))
+		if err != nil {
+			log.Printf("config of %s: %v", m.ID, err)
+			continue
+		}
+		if len(m.ConfigSet) > 0 {
+			// the player's values for it go first: they win over the mod's
+			var keys []string
+			for _, e := range gameinfo.Entries(string(data)) {
+				keys = append(keys, e.Key)
+			}
+			out = append(out, gameinfo.Config{Text: gameinfo.ConVarsConfig(m.ConfigSet, keys)})
+		}
+		out = append(out, gameinfo.Config{Name: m.Name, Text: string(data)})
+	}
+	return out
+}
+
+// ConfigEntry is one console variable of a config mod as the page shows it.
+type ConfigEntry struct {
+	gameinfo.Entry
+	// Set: the player's own value, when there is one.
+	Set *string `json:"set,omitempty"`
+}
+
+// ConfigEntries lists the console variables of a config mod with the
+// author's notes and the player's own values.
+func (a *App) ConfigEntries(id string) ([]ConfigEntry, error) {
+	a.mu.Lock()
+	m := a.state.Mod(id)
+	var set map[string]string
+	if m != nil {
+		set = m.ConfigSet
+	}
+	a.mu.Unlock()
+	if m == nil || m.Config == "" {
+		return nil, errors.New("this mod has no game settings")
+	}
+	data, err := os.ReadFile(filepath.Join(a.store.ModDir(id), mods.ConfigName))
+	if err != nil {
+		return nil, err
+	}
+	out := []ConfigEntry{}
+	for _, e := range gameinfo.Entries(string(data)) {
+		ce := ConfigEntry{Entry: e}
+		if v, ok := set[e.Key]; ok {
+			v := v
+			ce.Set = &v
+		}
+		out = append(out, ce)
+	}
+	return out, nil
+}
+
+// SetConfigValues stores the player's values for console variables of a
+// config mod (nil takes one back to the mod's own) and puts them in the game.
+func (a *App) SetConfigValues(id string, vals map[string]*string) error {
+	entries, err := a.ConfigEntries(id)
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, e := range entries {
+		known[e.Key] = true
+	}
+	for k, v := range vals {
+		if !known[k] {
+			return fmt.Errorf("%s is not a setting of this mod", k)
+		}
+		if v != nil && !gameinfo.ValidValue(*v) {
+			return fmt.Errorf("%s: that value can't be used (no quotes or braces, 64 characters at most)", k)
+		}
+	}
+	defer a.beginOp("Changing game settings")()
+	a.mu.Lock()
+	m := a.state.Mod(id)
+	if m == nil {
+		a.mu.Unlock()
+		return errors.New("no such mod")
+	}
+	if m.ConfigSet == nil {
+		m.ConfigSet = map[string]string{}
+	}
+	for k, v := range vals {
+		if v == nil {
+			delete(m.ConfigSet, k)
+		} else {
+			m.ConfigSet[k] = *v
+		}
+	}
+	if len(m.ConfigSet) == 0 {
+		m.ConfigSet = nil
+	}
+	a.mu.Unlock()
+	return a.changedLocked()
 }
 
 // Apply writes enabled mods into the game (opMu must be held).
@@ -228,6 +363,7 @@ func (a *App) applyLocked() error {
 		log.Printf("gameinfo: %v", err)
 	}
 	_, addons, _ := steam.Paths(dir)
+	a.prog.set(phaseApply, 0, 0)
 	a.mu.Lock()
 	stale := a.state.StaleParkedPaks()
 	err := a.store.Apply(a.state, addons)
@@ -280,13 +416,15 @@ func (a *App) markAndApplyLocked() error {
 
 // installFiles extracts VPKs from src into the store under m.ID (replacing any
 // previous Version) and registers the mod. opMu must be held.
-func (a *App) installFiles(m *mods.Mod, src, fallbackName string) error {
+func (a *App) installFiles(ctx context.Context, m *mods.Mod, src, fallbackName string) error {
 	if !catalog.ValidModID(m.ID) {
 		return fmt.Errorf("invalid mod id %q", m.ID)
 	}
 	staging := a.store.ModDir(m.ID) + ".new"
 	os.RemoveAll(staging)
-	files, err := mods.ExtractVPKs(src, staging, fallbackName)
+	a.prog.set(phaseUnpack, 0, 0)
+	files, config, err := mods.ExtractCtx(ctx, src, staging, fallbackName, func(n, total int64) { a.prog.set(phaseUnpack, n, total) })
+	a.prog.set(phaseApply, 0, 0) // from here on it can't be stopped
 	if err != nil {
 		os.RemoveAll(staging)
 		return err
@@ -303,7 +441,7 @@ func (a *App) installFiles(m *mods.Mod, src, fallbackName string) error {
 		return err
 	}
 	os.RemoveAll(old)
-	m.Files = files
+	m.Files, m.Config = files, config
 	m.InstalledAt = time.Now()
 	a.mu.Lock()
 	isNew := a.state.Mod(m.ID) == nil
@@ -313,8 +451,44 @@ func (a *App) installFiles(m *mods.Mod, src, fallbackName string) error {
 	a.state.AddMod(m)
 	a.saveLocked()
 	a.mu.Unlock()
-	log.Printf("installed %s (%s) with %d VPK(s)", strings.TrimSpace(m.Name+" "+m.Version), m.ID, len(files))
+	if config != "" {
+		log.Printf("installed %s (%s) with %d VPK(s) and game settings (gameinfo.gi)", strings.TrimSpace(m.Name+" "+m.Version), m.ID, len(files))
+	} else {
+		log.Printf("installed %s (%s) with %d VPK(s)", strings.TrimSpace(m.Name+" "+m.Version), m.ID, len(files))
+	}
 	return nil
+}
+
+// downloadPath is where a download with this identity (its checksum) is
+// kept while it runs: the same file always gets the same path, so one that
+// was stopped or broke off is continued the next time (fetch.Job).
+func (a *App) downloadPath(key string) (string, error) {
+	dir := filepath.Join(a.dataDir, "tmp")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(key))
+	return filepath.Join(dir, "dl-"+hex.EncodeToString(sum[:8])+".download"), nil
+}
+
+// partialMaxAge: an unfinished download older than this is deleted at start.
+const partialMaxAge = 7 * 24 * time.Hour
+
+// cleanTemp removes what earlier runs left in the temp folder: everything
+// but unfinished downloads, and those once they are old.
+func (a *App) cleanTemp() {
+	dir := filepath.Join(a.dataDir, "tmp")
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(e.Name(), ".part") && now().Sub(info.ModTime()) < partialMaxAge {
+			continue
+		}
+		os.Remove(filepath.Join(dir, e.Name()))
+	}
 }
 
 func (a *App) TempFile(pattern string) (string, error) {
@@ -346,9 +520,10 @@ func updateURL(raw string) string {
 
 // InstallCatalogMod downloads (or updates) one of our mods.
 func (a *App) InstallCatalogMod(ctx context.Context, id string) error {
-	defer a.beginOp("Installing " + id)()
+	ctx, done := a.beginInstall(ctx, "Installing "+id)
+	defer done()
 	if err := a.installCatalogLocked(ctx, id); err != nil {
-		return err
+		return a.stopped(ctx, err)
 	}
 	// Installed by hand: UI Kit's starter set, the player's set forgotten.
 	a.mu.Lock()
@@ -367,11 +542,11 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 	if cm == nil {
 		return fmt.Errorf("%s is not in the catalog (check for updates first)", id)
 	}
-	tmp, err := a.TempFile("catalog-*.zip")
+	tmp, err := a.downloadPath(cm.SHA256)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp)
+	defer dropDownload(ctx, tmp)
 	a.mu.Lock()
 	update := a.state.Mod(cm.ID) != nil
 	a.mu.Unlock()
@@ -379,7 +554,8 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 	if update {
 		src = updateURL(src)
 	}
-	if err := fetch.Download(ctx, src, tmp, fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}); err != nil {
+	a.prog.name(cm.Name)
+	if err := (fetch.Job{URL: src, Dest: tmp, Sum: fetch.Checksum{Algo: "sha256", Hex: cm.SHA256, Size: cm.Size}, KeepPartial: true}).Run(ctx); err != nil {
 		return err
 	}
 	m := &mods.Mod{ID: cm.ID, Source: mods.SourceCatalog, Name: cm.Name, Version: cm.Version, Page: cm.Page, Image: cm.Image,
@@ -390,7 +566,7 @@ func (a *App) installCatalogLocked(ctx context.Context, id string) error {
 	// Built for another game build: in as placeholders until checkGameBuilds
 	// finds the build for this one.
 	m.Parked = m.Builds != "" && stale(m.Game, a.clientVersion())
-	if err := a.installFiles(m, tmp, cm.ID+".vpk"); err != nil {
+	if err := a.installFiles(ctx, m, tmp, cm.ID+".vpk"); err != nil {
 		return err
 	}
 	if m.Parked {
@@ -434,7 +610,8 @@ func (a *App) gbFetch(ctx context.Context, model string, id int) (*gamebanana.Mo
 // AddGameBanana installs a GameBanana item, given either a link or model+id;
 // fileID 0 = newest file (kept up to date), another file pins the mod.
 func (a *App) AddGameBanana(ctx context.Context, link, model string, id, fileID int) error {
-	defer a.beginOp("Downloading from GameBanana")()
+	ctx, done := a.beginInstall(ctx, "Downloading from GameBanana")
+	defer done()
 	var err error
 	if link != "" {
 		if model, id, err = gamebanana.ParseURL(link); err != nil {
@@ -459,7 +636,7 @@ func (a *App) AddGameBanana(ctx context.Context, link, model string, id, fileID 
 		}
 	}
 	if err := a.installGBLocked(ctx, gb, f, f.ID != newest.ID); err != nil {
-		return err
+		return a.stopped(ctx, err)
 	}
 	return a.changedLocked()
 }
@@ -468,21 +645,22 @@ func (a *App) installGBLocked(ctx context.Context, gb *gamebanana.Mod, f gameban
 	if f.AvResult != "" && f.AvResult != "clean" {
 		return fmt.Errorf("GameBanana flagged %s (%s); not installing", f.Name, f.AvResult)
 	}
-	tmp, err := a.TempFile("gb-*.download")
+	tmp, err := a.downloadPath(fmt.Sprintf("gb-%d-%s", f.ID, f.MD5))
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp)
+	defer dropDownload(ctx, tmp)
 	sum := fetch.Checksum{Algo: "md5", Hex: f.MD5, Size: f.Size}
 	if f.MD5 == "" {
 		sum = fetch.Checksum{Algo: "none"}
 	}
-	if err := fetch.Download(ctx, f.URL, tmp, sum); err != nil {
+	a.prog.name(gb.Name)
+	if err := (fetch.Job{URL: f.URL, Dest: tmp, Sum: sum, KeepPartial: true}).Run(ctx); err != nil {
 		return err
 	}
 	m := &mods.Mod{ID: gamebanana.ModID(gb.Model, gb.ID), Source: mods.SourceGameBanana, Name: gb.Name, Version: gb.Version, Page: gb.ProfileURL,
 		Image: gb.Thumb(), Category: gb.CategoryName(), GBID: gb.ID, GBModel: gb.Model, GBFileID: f.ID, GBFileName: f.Name, GBModified: gb.DateModified, GBPinned: pinned}
-	if err := a.installFiles(m, tmp, f.Name); err != nil {
+	if err := a.installFiles(ctx, m, tmp, f.Name); err != nil {
 		return fmt.Errorf("%s: %w", f.Name, err)
 	}
 	return nil
@@ -490,11 +668,13 @@ func (a *App) installGBLocked(ctx context.Context, gb *gamebanana.Mod, f gameban
 
 // AddLocal installs an uploaded .zip/.vpk.
 func (a *App) AddLocal(src, filename string) error {
-	defer a.beginOp("Adding " + filename)()
+	ctx, done := a.beginInstall(context.Background(), "Adding "+filename)
+	defer done()
 	name := strings.TrimSuffix(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)), "_dir")
+	a.prog.name(name)
 	m := &mods.Mod{ID: mods.NewLocalID(name), Source: mods.SourceLocal, Name: name}
-	if err := a.installFiles(m, src, filename); err != nil {
-		return err
+	if err := a.installFiles(ctx, m, src, filename); err != nil {
+		return a.stopped(ctx, err)
 	}
 	return a.changedLocked()
 }

@@ -6,6 +6,7 @@ package mods
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/bodgit/sevenzip"
 	"github.com/fr0gtech/frogtech-mod-loader/internal/fsutil"
+	"github.com/fr0gtech/frogtech-mod-loader/internal/gameinfo"
 	"github.com/nwaples/rardecode/v2"
 )
 
@@ -32,18 +34,21 @@ const (
 
 // Mod is one installed mod. Its VPKs live in <data>/mods/<ID>/.
 type Mod struct {
-	ID          string    `json:"id"`
-	Source      string    `json:"source"`
-	Name        string    `json:"name"`
-	Version     string    `json:"version,omitempty"`
-	Enabled     bool      `json:"enabled"`
-	Order       int       `json:"order"`
-	Files       []string  `json:"files"`              // VPK file names inside the mod's store folder
-	Paks        []string  `json:"paks,omitempty"`     // pakNN_dir.vpk names at the last apply
-	Page        string    `json:"page,omitempty"`     // web page for the mod
-	Image       string    `json:"image,omitempty"`    // preview image URL (catalog or GameBanana)
-	Category    string    `json:"category,omitempty"` // GameBanana category (e.g. "Skins")
-	InstalledAt time.Time `json:"installedAt"`
+	ID      string   `json:"id"`
+	Source  string   `json:"source"`
+	Name    string   `json:"name"`
+	Version string   `json:"version,omitempty"`
+	Enabled bool     `json:"enabled"`
+	Order   int      `json:"order"`
+	Files   []string `json:"files"`            // VPK file names inside the mod's store folder
+	Config  string   `json:"config,omitempty"` // a gameinfo.gi in the store folder: its settings are merged into the game's
+	// ConfigSet: the player's own values for console variables of Config.
+	ConfigSet   map[string]string `json:"configSet,omitempty"`
+	Paks        []string          `json:"paks,omitempty"`     // pakNN_dir.vpk names at the last apply
+	Page        string            `json:"page,omitempty"`     // web page for the mod
+	Image       string            `json:"image,omitempty"`    // preview image URL (catalog or GameBanana)
+	Category    string            `json:"category,omitempty"` // GameBanana category (e.g. "Skins")
+	InstalledAt time.Time         `json:"installedAt"`
 
 	// Game builds (catalog mods whose entry names a builds.json): Game is the
 	// ClientVersion the stored files were built for ("" = installed before the
@@ -298,36 +303,79 @@ var ErrUnsupportedArchive = errors.New("unsupported archive: extract it yourself
 
 const maxVPKSize = 4 << 30
 
+// ConfigName is the store name of a mod's gameinfo.gi (Mod.Config).
+const ConfigName = "gameinfo.gi"
+
 // ExtractVPKs copies every single-file VPK in an archive (zip, rar, 7z) or a
 // bare VPK into destDir. It returns the stored file names, sorted by their
 // path inside the archive.
 func ExtractVPKs(src, destDir, fallbackName string) ([]string, error) {
+	names, _, err := ExtractCtx(context.Background(), src, destDir, fallbackName, nil)
+	return names, err
+}
+
+// ExtractCtx is ExtractVPKs that stops when ctx ends and reports the unpacked
+// bytes of the VPKs (total is 0 when the archive doesn't say, as with rar).
+// A gameinfo.gi in the archive (a config mod) is stored as ConfigName and
+// returned as config; such an archive needs no VPK.
+func ExtractCtx(ctx context.Context, src, destDir, fallbackName string, progress func(done, total int64)) (names []string, config string, err error) {
 	f, err := os.Open(src)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	head := make([]byte, 8)
 	n, _ := io.ReadFull(f, head)
 	f.Close()
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	kind := archiveKind(head[:n])
+	pr := &progressReader{ctx: ctx, report: progress}
 	if kind == "vpk" {
 		name := sanitizeVPKName(fallbackName)
-		if err := fsutil.CopyFile(src, filepath.Join(destDir, name)); err != nil {
-			return nil, err
+		in, err := os.Open(src)
+		if err != nil {
+			return nil, "", err
 		}
-		return []string{name}, nil
+		defer in.Close()
+		if fi, err := in.Stat(); err == nil {
+			pr.total = fi.Size()
+		}
+		dst := filepath.Join(destDir, name)
+		if err := extractVPKTo(pr.of(in), dst, name); err != nil {
+			os.Remove(dst)
+			return nil, "", err
+		}
+		return []string{name}, "", nil
 	}
 	if kind == "" {
-		return nil, errors.New("not a .zip, .rar, .7z or .vpk file")
+		// a bare gameinfo.gi
+		if strings.HasSuffix(strings.ToLower(fallbackName), ".gi") {
+			if fi, err := os.Stat(src); err == nil && fi.Size() <= gameinfo.MaxConfigSize {
+				if data, err := os.ReadFile(src); err == nil && gameinfo.CheckConfig(string(data)) == nil {
+					if err := os.WriteFile(filepath.Join(destDir, ConfigName), data, 0o644); err != nil {
+						return nil, "", err
+					}
+					return nil, ConfigName, nil
+				}
+			}
+		}
+		return nil, "", errors.New("not a .zip, .rar, .7z, .vpk or gameinfo.gi file")
 	}
 
+	pr.total = vpkBytes(kind, src)
 	type found struct{ path, tmp string }
 	var vpks []found
-	var nested []string
+	var nested, others []string
+	type gi struct {
+		path string
+		data []byte
+	}
+	var gis []gi
 	err = walkArchive(kind, src, func(name string, r io.Reader) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		name = strings.ReplaceAll(name, `\`, "/")
 		base := filepath.Base(name)
 		low := strings.ToLower(base)
@@ -338,12 +386,22 @@ func ExtractVPKs(src, destDir, fallbackName string) ([]string, error) {
 				return fmt.Errorf("%s is part of a multi-file VPK, which is not supported", base)
 			}
 			tmp := filepath.Join(destDir, fmt.Sprintf(".extract-%d.tmp", len(vpks)))
-			if err := extractVPKTo(r, tmp, name); err != nil {
+			if err := extractVPKTo(pr.of(r), tmp, name); err != nil {
 				return err
 			}
 			vpks = append(vpks, found{name, tmp})
+		case strings.HasSuffix(low, ".gi"):
+			data, err := io.ReadAll(io.LimitReader(r, gameinfo.MaxConfigSize+1))
+			if err != nil {
+				return err
+			}
+			gis = append(gis, gi{name, data})
 		case strings.HasSuffix(low, ".7z") || strings.HasSuffix(low, ".rar") || strings.HasSuffix(low, ".zip"):
 			nested = append(nested, base)
+		default:
+			if len(others) < 4 {
+				others = append(others, base)
+			}
 		}
 		return nil
 	})
@@ -354,16 +412,53 @@ func ExtractVPKs(src, destDir, fallbackName string) ([]string, error) {
 	}
 	if err != nil {
 		cleanup()
-		return nil, err
+		return nil, "", err
 	}
-	if len(vpks) == 0 {
-		if len(nested) > 0 {
-			return nil, fmt.Errorf("no .vpk in the archive (it contains %s: extract it and add the .vpk)", strings.Join(nested, ", "))
+	// The config: the file named gameinfo.gi nearest to the top (archives
+	// carry variants as gameinfo-LOW.gi and the like), or the only .gi.
+	var cfg *gi
+	for i := range gis {
+		g := &gis[i]
+		if !strings.EqualFold(filepath.Base(g.path), "gameinfo.gi") {
+			continue
 		}
-		return nil, errors.New("no .vpk file found in the archive")
+		if cfg == nil || strings.Count(g.path, "/") < strings.Count(cfg.path, "/") {
+			cfg = g
+		}
+	}
+	if cfg == nil && len(gis) == 1 {
+		cfg = &gis[0]
+	}
+	if cfg != nil {
+		if err := gameinfo.CheckConfig(string(cfg.data)); err != nil {
+			cleanup()
+			return nil, "", err
+		}
+		if err := os.WriteFile(filepath.Join(destDir, ConfigName), cfg.data, 0o644); err != nil {
+			cleanup()
+			return nil, "", err
+		}
+		config = ConfigName
+	}
+	if len(vpks) == 0 && config == "" {
+		if len(gis) > 0 {
+			return nil, "", fmt.Errorf("the archive has %d .gi files and none is named gameinfo.gi: add the one you want as a file", len(gis))
+		}
+		if len(nested) > 0 {
+			return nil, "", fmt.Errorf("no .vpk in the archive (it contains %s: extract it and add the .vpk)", strings.Join(nested, ", "))
+		}
+		// Say what is in it instead: a config or a loose-files mod isn't
+		// something the loader can put in the game.
+		if len(others) > 0 {
+			more := ""
+			if len(others) > 3 {
+				others, more = others[:3], " and more"
+			}
+			return nil, "", fmt.Errorf("no .vpk or gameinfo.gi file found in the archive (it contains %s%s): the loader can't install it", strings.Join(others, ", "), more)
+		}
+		return nil, "", errors.New("no .vpk or gameinfo.gi file found in the archive")
 	}
 	sort.SliceStable(vpks, func(i, j int) bool { return strings.ToLower(vpks[i].path) < strings.ToLower(vpks[j].path) })
-	var names []string
 	used := map[string]bool{}
 	for i, v := range vpks {
 		name := sanitizeVPKName(filepath.Base(v.path))
@@ -373,11 +468,70 @@ func ExtractVPKs(src, destDir, fallbackName string) ([]string, error) {
 		used[strings.ToLower(name)] = true
 		if err := os.Rename(v.tmp, filepath.Join(destDir, name)); err != nil {
 			cleanup()
-			return nil, err
+			return nil, "", err
 		}
 		names = append(names, name)
 	}
-	return names, nil
+	return names, config, nil
+}
+
+// progressReader counts what the extraction reads, across the files of an
+// archive, and ends the read when ctx does.
+type progressReader struct {
+	ctx         context.Context
+	r           io.Reader
+	done, total int64
+	report      func(done, total int64)
+}
+
+func (p *progressReader) of(r io.Reader) io.Reader { p.r = r; return p }
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	if err := p.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := p.r.Read(b)
+	p.done += int64(n)
+	if p.report != nil && n > 0 {
+		p.report(p.done, p.total)
+	}
+	return n, err
+}
+
+func isVPKEntry(name string) bool {
+	base := filepath.Base(strings.ReplaceAll(name, `\`, "/"))
+	return !strings.HasPrefix(base, ".") && strings.HasSuffix(strings.ToLower(base), ".vpk")
+}
+
+// vpkBytes is the unpacked size of the VPKs in a zip or 7z (their lists say
+// it up front); 0 for other kinds or an archive that can't be read.
+func vpkBytes(kind, src string) int64 {
+	var total uint64
+	switch kind {
+	case "zip":
+		zr, err := zip.OpenReader(src)
+		if err != nil {
+			return 0
+		}
+		defer zr.Close()
+		for _, zf := range zr.File {
+			if !zf.FileInfo().IsDir() && isVPKEntry(zf.Name) {
+				total += zf.UncompressedSize64
+			}
+		}
+	case "7z":
+		zr, err := sevenzip.OpenReader(src)
+		if err != nil {
+			return 0
+		}
+		defer zr.Close()
+		for _, zf := range zr.File {
+			if !zf.FileInfo().IsDir() && isVPKEntry(zf.Name) {
+				total += zf.UncompressedSize
+			}
+		}
+	}
+	return int64(total)
 }
 
 // walkArchive calls fn for every regular file in a zip, rar or 7z archive.

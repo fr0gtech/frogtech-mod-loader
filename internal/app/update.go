@@ -298,12 +298,17 @@ func contains(list []string, s string) bool {
 // installUpdates installs mod updates (one apply) and then the loader
 // update, which restarts the process. It returns the labels installed.
 func (a *App) installUpdates(ctx context.Context, ups []pendingUpdate, selfUp *catalog.Catalog) ([]string, error) {
-	done := a.beginOp("Installing updates")
+	parent := ctx
+	ctx, done := a.beginInstall(ctx, "Installing updates")
 	var errs []error
 	installed := []string{}
 	for _, u := range ups {
 		log.Printf("updating %s", u.label)
 		if err := u.install(ctx); err != nil {
+			if ctx.Err() != nil {
+				errs = append(errs, a.stopped(ctx, err)) // stopped: the rest waits too
+				break
+			}
 			errs = append(errs, fmt.Errorf("%s: %w", u.label, err))
 			continue
 		}
@@ -315,6 +320,7 @@ func (a *App) installUpdates(ctx context.Context, ups []pendingUpdate, selfUp *c
 		}
 	}
 	done()
+	ctx = parent
 	if selfUp != nil {
 		notifyHook("Updating Frogtech Mod Loader", "Installing Version "+selfUp.Loader.Version+"; the loader restarts.", "")
 		if err := a.SelfUpdate(ctx, selfUp); err != nil {
@@ -399,13 +405,62 @@ func (a *App) CheckFromTray() {
 	a.reportCheck(res, err, true)
 }
 
+// ModCheck is what looking for one mod's update found.
+type ModCheck struct {
+	Update string `json:"update,omitempty"` // the newer version's label
+	// Note: why this mod doesn't update (a file of your own, a kept older file)
+	Note string `json:"note,omitempty"`
+}
+
+// CheckMod looks for a newer version of one installed mod, where it came
+// from: its GameBanana page, the Frogtech list or its repository.
+func (a *App) CheckMod(ctx context.Context, id string) (ModCheck, error) {
+	a.mu.Lock()
+	var m mods.Mod
+	if cur := a.state.Mod(id); cur != nil {
+		m = *cur
+	}
+	a.mu.Unlock()
+	switch m.Source {
+	case "":
+		return ModCheck{}, errors.New("no such mod")
+	case mods.SourceGameBanana:
+		if m.GBID <= 0 {
+			return ModCheck{Note: "It has no GameBanana page to check."}, nil
+		}
+		if _, err := a.gbFetch(ctx, m.GBModel, m.GBID); err != nil {
+			return ModCheck{}, err
+		}
+		if m.GBPinned {
+			return ModCheck{Note: "You picked one of its older files, so it stays on that one. Pick another file in its details."}, nil
+		}
+	case mods.SourceCatalog:
+		if err := a.RefreshCatalog(ctx); err != nil {
+			return ModCheck{}, fmt.Errorf("couldn't reach mods.frogtech.dev: %w", err)
+		}
+	case mods.SourceRepo:
+		if err := a.refreshRepo(ctx, m.Repo); err != nil {
+			return ModCheck{}, err
+		}
+	default:
+		return ModCheck{Note: "It's a file you added yourself, so there is nowhere to look for a newer one."}, nil
+	}
+	for _, u := range a.pendingUpdates() {
+		if u.modID == id {
+			return ModCheck{Update: u.label}, nil
+		}
+	}
+	return ModCheck{}, nil
+}
+
 // UpdateMod installs the available update for one mod now.
 func (a *App) UpdateMod(ctx context.Context, id string) error {
 	for _, u := range a.pendingUpdates() {
 		if u.modID == id {
-			defer a.beginOp("Updating " + u.label)()
+			ctx, done := a.beginInstall(ctx, "Updating "+u.label)
+			defer done()
 			if err := u.install(ctx); err != nil {
-				return err
+				return a.stopped(ctx, err)
 			}
 			return a.changedLocked()
 		}
@@ -800,7 +855,7 @@ func (a *App) installBuildLocked(ctx context.Context, id, buildsURL, local strin
 	if err := fetch.Download(ctx, updateURL(b.URL), tmp, fetch.Checksum{Algo: "sha256", Hex: b.SHA256, Size: b.Size}); err != nil {
 		return err
 	}
-	if err := a.installFiles(m, tmp, id+".vpk"); err != nil {
+	if err := a.installFiles(ctx, m, tmp, id+".vpk"); err != nil {
 		return err
 	}
 	log.Printf("%s %s for game %s installed", m.Name, b.Version, local)

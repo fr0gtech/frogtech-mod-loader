@@ -5,6 +5,7 @@ package gameinfo
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 
@@ -289,21 +290,40 @@ func lineEnding(ref string, all []string) string {
 }
 
 // Fix makes sure the game's gameinfo.gi mounts the addons folder (with the
-// Mod/Write lines the game needs then) and that the folder exists. It backs
+// Mod/Write lines the game needs then), has the settings of cfgs (config
+// mods, see config.go) merged in, and that the folder exists. It backs
 // the original up once to gameinfo.gi.bak and writes atomically. Returns true
 // if the file was modified.
-func Fix(gameDir string) (bool, error) {
-	_, addons, _ := steam.Paths(gameDir)
+func Fix(gameDir string, cfgs ...Config) (bool, error) {
+	_, addons, path := steam.Paths(gameDir)
 	if err := os.MkdirAll(addons, 0o755); err != nil {
 		return false, err
+	}
+	if len(cfgs) > 0 || isMerged(path) {
+		return set(gameDir, true, cfgs)
 	}
 	return rewrite(gameDir, Ensure)
 }
 
-// Unfix takes the loader's lines out again, leaving Valve's file as it was:
-// the game then loads no mods. Returns true if the file was modified.
+// Unfix takes the loader's lines and merged configs out again, leaving
+// Valve's file as it was: the game then loads no mods. Returns true if the
+// file was modified.
 func Unfix(gameDir string) (bool, error) {
+	if _, _, path := steam.Paths(gameDir); isMerged(path) {
+		return set(gameDir, false, nil)
+	}
 	return rewrite(gameDir, Strip)
+}
+
+func isMerged(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, len(marker))
+	n, _ := io.ReadFull(f, head)
+	return Merged(string(head[:n]))
 }
 
 func rewrite(gameDir string, f func(string) (string, bool, error)) (bool, error) {

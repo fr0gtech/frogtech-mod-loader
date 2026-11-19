@@ -21,7 +21,7 @@ import (
 )
 
 // version is set at build time with -ldflags "-X main.version=..." (build.sh).
-var version = "0.10.1-dev"
+var version = "0.11.0-dev"
 
 func dataDirPath() string {
 	if d := os.Getenv("LOCALAPPDATA"); d != "" {
@@ -80,7 +80,6 @@ func main() {
 
 	log.Printf("Frogtech Mod Loader %s starting (background=%v)", version, *background)
 	go app.CleanupOldExe()
-	os.RemoveAll(filepath.Join(dataDir, "tmp"))
 
 	a, err := app.NewApp(dataDir)
 	if err != nil {

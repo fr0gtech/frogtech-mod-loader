@@ -48,6 +48,7 @@ type File struct {
 	IsArchived  bool   `json:"_bIsArchived"`
 	AvResult    string `json:"_sAvResult"`
 	Description string `json:"_sDescription,omitempty"`
+	Version     string `json:"_sVersion,omitempty"`
 	Downloads   int    `json:"_nDownloadCount"`
 }
 

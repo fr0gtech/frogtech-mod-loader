@@ -2,9 +2,11 @@ package mods
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fr0gtech/frogtech-mod-loader/internal/testutil"
@@ -245,5 +247,69 @@ func TestExtractRealArchives(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
+	}
+}
+
+// An archive without a VPK says what it holds instead.
+func TestExtractNoVPKNamesContents(t *testing.T) {
+	dir := t.TempDir()
+	zp := filepath.Join(dir, "cfg.zip")
+	testutil.WriteZip(t, zp, map[string][]byte{"readme.txt": []byte("x")})
+	_, err := ExtractVPKs(zp, filepath.Join(dir, "out"), "cfg.zip")
+	if err == nil || !strings.Contains(err.Error(), "no .vpk or gameinfo.gi file found") || !strings.Contains(err.Error(), "readme.txt") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A config mod: the archive's gameinfo.gi is stored, variants are not.
+func TestExtractConfig(t *testing.T) {
+	dir := t.TempDir()
+	gi := []byte("GameInfo\n{\n\tConVars\n\t{\n\t\tfoo 1\n\t}\n}\n")
+	zp := filepath.Join(dir, "cfg.zip")
+	testutil.WriteZip(t, zp, map[string][]byte{"cfg/gameinfo-LOW.gi": []byte("GameInfo { a 2 }"), "cfg/gameinfo.gi": gi, "cfg/readme.md": []byte("x")})
+	out := filepath.Join(dir, "out")
+	names, config, err := ExtractCtx(context.Background(), zp, out, "cfg.zip", nil)
+	if err != nil || len(names) != 0 || config != ConfigName {
+		t.Fatalf("names %v config %q err %v", names, config, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(out, ConfigName)); string(got) != string(gi) {
+		t.Fatalf("stored %q", got)
+	}
+	// a bare file
+	bare := filepath.Join(dir, "upload.tmp")
+	os.WriteFile(bare, gi, 0o644)
+	if _, config, err := ExtractCtx(context.Background(), bare, filepath.Join(dir, "o2"), "gameinfo.gi", nil); err != nil || config != ConfigName {
+		t.Fatalf("bare: %q %v", config, err)
+	}
+	// not a gameinfo
+	bad := filepath.Join(dir, "bad.zip")
+	testutil.WriteZip(t, bad, map[string][]byte{"gameinfo.gi": []byte("hello {")})
+	if _, _, err := ExtractCtx(context.Background(), bad, filepath.Join(dir, "o3"), "bad.zip", nil); err == nil {
+		t.Fatal("a broken gameinfo.gi was accepted")
+	}
+}
+
+// Extraction reports the unpacked bytes and stops when its context ends.
+func TestExtractProgressAndCancel(t *testing.T) {
+	dir := t.TempDir()
+	vpk := testutil.FakeVPK("big")
+	zp := filepath.Join(dir, "m.zip")
+	testutil.WriteZip(t, zp, map[string][]byte{"pak01_dir.vpk": vpk, "readme.txt": []byte("hello")})
+	var done, total int64
+	names, _, err := ExtractCtx(context.Background(), zp, filepath.Join(dir, "out"), "m.zip", func(d, tot int64) { done, total = d, tot })
+	if err != nil || len(names) != 1 {
+		t.Fatalf("%v %v", names, err)
+	}
+	if total != int64(len(vpk)) || done != total {
+		t.Fatalf("progress %d of %d, file is %d", done, total, len(vpk))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	out2 := filepath.Join(dir, "out2")
+	if _, _, err := ExtractCtx(ctx, zp, out2, "m.zip", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want cancelled", err)
+	}
+	if left, _ := os.ReadDir(out2); len(left) != 0 {
+		t.Fatalf("a cancelled extraction left %v", left)
 	}
 }
